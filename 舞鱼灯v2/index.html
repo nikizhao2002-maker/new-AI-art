@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>钓一盏鱼灯 - 粒子点云交互</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=20260611-title-one-line">
+
+    <!-- Import Map（jsDelivr，国内访问更稳定） -->
+    <script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.8.0/dist/es-module-shims.min.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <!-- MediaPipe 手势识别已统一到 src/hand-input.js (tasks-vision, ES module 内按需加载) -->
+
+    <!-- PeerJS + QRCode for phone connection -->
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+</head>
+<body>
+
+    <!-- 加载界面 -->
+    <div id="loader">
+        <div class="loader-text">钓一盏鱼灯</div>
+        <div class="loader-sub">INITIALIZING PARTICLE SYSTEM...</div>
+        <div class="loader-bar" aria-hidden="true"><div id="loader-progress"></div></div>
+    </div>
+
+    <!-- WebGL Canvas -->
+    <div id="canvas-container"></div>
+
+    <!-- 粒子场景层（鱼灯领取阶段：实体鱼灯 ⇄ 粒子鱼影 溶解互动） -->
+    <div id="particle-layer"></div>
+
+    <!-- 手部骨骼绘制层（全屏，叠在3D上） -->
+    <canvas id="hand-skeleton" style="position:fixed;inset:0;z-index:5;pointer-events:none;"></canvas>
+
+    <!-- 摄像头 -->
+    <video id="camera-video" autoplay playsinline style="display:none"></video>
+    <canvas id="camera-canvas"></canvas>
+
+    <!-- 麦克风指示器 -->
+    <div id="mic-indicator" style="display:none; position:fixed; bottom:80px; left:20px; font-size:28px; opacity:0.5; transition: all 0.2s; z-index:15; cursor:pointer;" title="🎤 对着麦克风吹气可触发风效果">🎤</div>
+
+    <!-- 手机连接 QR 码 -->
+    <div id="qr-container" style="display:none; position:fixed; top:20px; left:20px; z-index:20; background:rgba(0,0,0,0.85); padding:12px; border-radius:12px; border:1px solid rgba(200,180,100,0.3);">
+        <div style="color:#e0d0a0; font-size:12px; text-align:center; margin-bottom:6px;">📱 手机扫码连接</div>
+        <canvas id="qr-canvas" style="width:120px; height:120px;"></canvas>
+        <div id="qr-status" style="color:#88aacc; font-size:10px; text-align:center; margin-top:4px;">等待连接...</div>
+        <div style="text-align:center; margin-top:6px;">
+            <button id="qr-close" style="background:none; border:1px solid rgba(200,180,100,0.4); color:#e0d0a0; padding:4px 10px; border-radius:6px; cursor:pointer; font-size:11px;">隐藏</button>
+        </div>
+    </div>
+    <!-- QR 码开关按钮 -->
+    <div id="qr-toggle" style="position:fixed; top:20px; left:20px; z-index:19; font-size:24px; cursor:pointer; opacity:0.7; transition:opacity 0.2s;" title="显示手机连接二维码">📱</div>
+
+    <!-- UI 覆盖层 -->
+    <div id="ui-overlay">
+        <!-- 顶部仪式手势提示 -->
+        <div id="ritual-cue" class="ritual-cue is-hidden" aria-live="polite">
+            <div class="ritual-copy">
+                <div class="ritual-kicker" id="ritual-kicker">下一步手势</div>
+                <div class="ritual-title" id="ritual-title">伸出手掌，唤醒水面</div>
+                <div class="ritual-subtitle" id="ritual-subtitle">动作放慢一点，系统会跟随你的手势。</div>
+            </div>
+            <div class="ritual-gesture" id="ritual-gesture" aria-hidden="true">
+                <span class="hand hand-left">✋</span>
+                <span class="hand hand-right">✋</span>
+                <span class="motion-line"></span>
+            </div>
+            <button id="ritual-dismiss" class="ritual-dismiss" type="button" aria-label="关闭提示">×</button>
+        </div>
+
+        <!-- 左下角信息 -->
+        <div class="info-panel">
+            <h1>钓起鱼影</h1>
+            <p class="info-sub">FISH SHADOW RISING</p>
+            <p class="info-hint" id="hint-text">单击或轻触水面制造涟漪</p>
+        </div>
+
+        <!-- 右侧控制面板 -->
+        <div class="control-panel dev-panel" id="control-panel">
+            <div class="panel-header">
+                <span class="panel-title">开发面板 · DEV (D)</span>
+                <button class="panel-toggle" id="panel-toggle" aria-label="关闭开发面板">✕</button>
+            </div>
+            
+            <div class="panel-body" id="panel-body">
+                <div class="control-group timeout-group">
+                    <label>粒子大小</label>
+                    <input type="range" id="ctrl-size" min="0.5" max="8" step="0.1" value="4.5">
+                </div>
+                <div class="control-group">
+                    <label>流动扰动</label>
+                    <input type="range" id="ctrl-fluid" min="0" max="5" step="0.1" value="0.0">
+                </div>
+                <div class="control-group">
+                    <label>呼吸幅度</label>
+                    <input type="range" id="ctrl-breath" min="0" max="0.3" step="0.01" value="0.02">
+                </div>
+                <div class="control-group">
+                    <label>背景亮度去除</label>
+                    <input type="range" id="ctrl-threshold" min="0" max="0.5" step="0.01" value="0.2">
+                </div>
+
+                <div class="control-group">
+                    <div class="control-group-header">
+                        <label>手势超时 (秒)</label>
+                        <button class="reset-btn" id="reset-defaults">重置默认值</button>
+                    </div>
+                    <div class="timeout-grid">
+                        <div class="timeout-item">
+                            <span class="timeout-label">展开骨架</span>
+                            <input type="range" id="ctrl-timeout-0" min="6" max="30" step="1" value="12">
+                            <span class="timeout-value" id="timeout-val-0">12s</span>
+                        </div>
+                        <div class="timeout-item">
+                            <span class="timeout-label">糊纸覆面</span>
+                            <input type="range" id="ctrl-timeout-1" min="6" max="30" step="1" value="15">
+                            <span class="timeout-value" id="timeout-val-1">15s</span>
+                        </div>
+                        <div class="timeout-item">
+                            <span class="timeout-label">着色描鳞</span>
+                            <input type="range" id="ctrl-timeout-2" min="6" max="30" step="1" value="18">
+                            <span class="timeout-value" id="timeout-val-2">18s</span>
+                        </div>
+                        <div class="timeout-item">
+                            <span class="timeout-label">点亮鱼灯</span>
+                            <input type="range" id="ctrl-timeout-3" min="6" max="30" step="1" value="18">
+                            <span class="timeout-value" id="timeout-val-3">18s</span>
+                        </div>
+                        <div class="timeout-item">
+                            <span class="timeout-label">鱼灯汇群</span>
+                            <input type="range" id="ctrl-timeout-4" min="6" max="30" step="1" value="15">
+                            <span class="timeout-value" id="timeout-val-4">15s</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>染色叠加</label>
+                    <div class="color-picker-row">
+                        <button class="color-btn active" data-color="none" title="原色">⊘</button>
+                        <button class="color-btn" data-color="#d4af37" title="金色" style="background:#d4af37"></button>
+                        <button class="color-btn" data-color="#ff4444" title="朱红" style="background:#ff4444"></button>
+                        <button class="color-btn" data-color="#4488ff" title="青蓝" style="background:#4488ff"></button>
+                        <button class="color-btn" data-color="#44ffaa" title="翠绿" style="background:#44ffaa"></button>
+                        <button class="color-btn" data-color="#ff88dd" title="霞紫" style="background:#ff88dd"></button>
+                        <input type="color" id="custom-color" value="#ffffff" title="自定义">
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>水面色调</label>
+                    <div class="color-picker-row">
+                        <button class="water-color-btn active" data-water="blue" title="深蓝" style="background:linear-gradient(135deg,#0c2340,#1e5080)">🌊</button>
+                        <button class="water-color-btn" data-water="green" title="翠绿" style="background:linear-gradient(135deg,#0a3020,#1a6048)">🌿</button>
+                        <button class="water-color-btn" data-water="silver" title="银白" style="background:linear-gradient(135deg,#2a2a3a,#5a5a7a)">✨</button>
+                        <button class="water-color-btn" data-water="black" title="纯黑" style="background:#000">⚫</button>
+                        <button class="water-color-btn" data-water="transparent" title="透明" style="background:repeating-conic-gradient(#333 0% 25%,#222 0% 50%) 0/12px 12px">▣</button>
+                    </div>
+                </div>
+
+                <div class="control-group">
+                    <label>场景阶段</label>
+                    <div class="stage-buttons" id="stage-buttons">
+                        <button class="stage-btn active" data-phase="water">💧 水面</button>
+                        <button class="stage-btn" data-phase="fishing">🎣 钓鱼</button>
+                        <button class="stage-btn" data-phase="crafting">🏮 制灯</button>
+                        <button class="stage-btn" data-phase="lanternReceive">🏮 领取鱼灯</button>
+                        <button class="stage-btn" data-phase="lanternSwarm">✨ 鱼灯游群</button>
+                    </div>
+                </div>
+
+                <div class="control-group gesture-guide">
+                    <label>手势说明</label>
+                    <div class="gesture-list">
+                        <div class="gesture-item">👆 <span>指尖触碰 → 水波纹 · 引鱼</span></div>
+                        <div class="gesture-item">🤏 <span>捏合 → 抓鱼 / 回到水面</span></div>
+                        <div class="gesture-item">↔ <span>双手推开 → 展开竹骨</span></div>
+                        <div class="gesture-item">☞ <span>左至右抹过 → 糊纸覆面</span></div>
+                        <div class="gesture-item">✊ <span>握拳再张开 → 着色描鳞</span></div>
+                        <div class="gesture-item">🙌 <span>张手靠拢上托 → 点亮鱼灯</span></div>
+                        <div class="gesture-item">✊ <span>握拳后张开 → 放飞鱼灯并汇入灯群</span></div>
+                        <div class="gesture-item">🖱️ <span>左键旋转 · 右键水波纹</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 制灯阶段进度指示（仅CRAFTING阶段显示） -->
+        <div id="gesture-progress" style="display:none;">
+            <div class="gesture-step" data-step="0" title="活鱼"></div>
+            <div class="gesture-step" data-step="1" title="骨架"></div>
+            <div class="gesture-step" data-step="2" title="糊纸"></div>
+            <div class="gesture-step" data-step="3" title="上色"></div>
+            <div class="gesture-step" data-step="4" title="鱼灯"></div>
+        </div>
+
+        <!-- 底部阶段指示 -->
+        <div class="stage-indicator" id="stage-indicator">
+            <span class="dot active" data-idx="0" title="水面">💧</span>
+            <span class="dot" data-idx="1" title="钓鱼">🎣</span>
+            <span class="dot" data-idx="2" title="制灯">🏮</span>
+            <span class="dot" data-idx="3" title="领取鱼灯">🏮</span>
+            <span class="dot" data-idx="4" title="鱼灯游群">✨</span>
+        </div>
+    </div>
+
+    <!-- 常驻精简 HUD（观众可用：上一步 / 重来 / 换鱼 / 静音 / 开发面板） -->
+    <div id="hud">
+        <button id="hud-back" type="button" title="返回上一步">← 上一步</button>
+        <button id="hud-restart" type="button" title="重新开始">↺ 重来</button>
+        <button id="hud-switch-fish" type="button" title="换一种鱼">🐟 换鱼</button>
+        <button id="hud-mute" type="button" title="静音 / 取消静音" aria-pressed="false">🔊</button>
+        <button id="hud-dev" type="button" title="开发者面板 (D)">⚙</button>
+    </div>
+
+    <!-- 鱼影显形 · 粒子控制面板（仿 pointcloud-demo：5 种溶解特效 + 溶解滑块） -->
+    <div id="reveal-panel" aria-label="粒子鱼影控制">
+        <div class="rp-fx">
+            <button data-fx="0" class="active" title="标准">💧</button>
+            <button data-fx="1" title="爆炸">💥</button>
+            <button data-fx="2" title="漩涡">🌀</button>
+            <button data-fx="3" title="萤火">🪰</button>
+            <button data-fx="4" title="星尘">✨</button>
+        </div>
+        <div class="rp-row">
+            <label>溶解</label>
+            <input id="rp-dissolve" type="range" min="0" max="1" step="0.01" value="0">
+        </div>
+        <div class="rp-hint">张开手掌让鱼影化光 · 握拳凝形 · 或拖动滑块</div>
+    </div>
+
+    <!-- 钓获知识卡片（右侧） -->
+    <aside id="fish-knowledge-card" class="fish-knowledge-card is-hidden" aria-live="polite">
+        <div class="fkc-frame">
+            <div id="knowledge-fish-canvas" class="fkc-fish-view" aria-hidden="true"></div>
+            <h2 class="fkc-title" id="fkc-title">你钓起了「」</h2>
+            <p class="fkc-meaning" id="fkc-meaning"></p>
+            <p class="fkc-transition">鱼影已上岸，比出 OK 或等待 5 秒进入制灯工艺。</p>
+            <p class="fkc-transition-en">MAKE AN OK GESTURE OR WAIT 5 SECONDS TO BEGIN.</p>
+            <button type="button" id="fkc-enter-craft" class="fkc-btn">
+                <span>开始制灯</span>
+                <small>START CRAFTING</small>
+            </button>
+        </div>
+    </aside>
+
+    <div id="craft-video-overlay" class="craft-video-overlay is-hidden" aria-hidden="true">
+        <iframe id="craft-video-frame" class="craft-video-frame" title="大良鱼灯 · 数字工艺体验" allow="camera; microphone" loading="lazy"></iframe>
+        <div id="craft-return-cue" class="craft-return-cue is-hidden" aria-live="polite">
+            <div class="craft-return-kicker">四序工艺已完成</div>
+            <p class="craft-return-title">左右挥动手掌，领取你的鱼灯</p>
+            <p class="craft-return-sub">SWEEP YOUR PALM LEFT AND RIGHT TO CLAIM YOUR LANTERN</p>
+        </div>
+        <button id="craft-video-back" class="craft-video-back" type="button" aria-label="返回鱼影显形">← 上一步</button>
+        <button id="craft-video-close" class="craft-video-close" type="button" aria-label="领取鱼灯">领取鱼灯 · CLAIM LANTERN</button>
+    </div>
+
+    <div id="lantern-summon-ui" class="lantern-summon-ui is-hidden" aria-live="polite">
+        <p class="lantern-summon-kicker">鱼影化灯 · DIGITAL LANTERN</p>
+        <p id="lantern-current-name" class="lantern-current-name">当前获得：鱼灯</p>
+        <h2 id="lantern-summon-title">左右挥动手掌，召唤你的鱼灯</h2>
+        <p id="lantern-summon-sub">SWEEP YOUR PALM TO SUMMON THE LANTERN</p>
+        <button id="lantern-summon-btn" type="button">
+            <span>召唤鱼灯</span>
+            <small>SUMMON LANTERN</small>
+        </button>
+    </div>
+
+    <script type="module">
+    const showBootError = (msg) => {
+        const sub = document.querySelector('.loader-sub');
+        if (sub) sub.textContent = msg;
+        console.error('[BOOT]', msg);
+    };
+    window.addEventListener('error', (e) => showBootError('加载失败：' + (e.message || '未知错误')));
+    import('./app.js?v=20260611-lantern-dissolve-15s').catch((err) => showBootError('模块加载失败：' + err.message));
+    </script>
+</body>
+</html>
