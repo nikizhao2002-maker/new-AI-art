@@ -1,0 +1,9 @@
+钓一盏鱼灯 — 网页地址（需先启动本地服务）
+
+http://localhost:8081/?v=20260601a
+
+macOS：双击「启动网页.command」
+Windows / 手动：在本文件夹执行  python3 -m http.server 8081
+然后浏览器打开上面链接。
+
+详细说明见 README.md
