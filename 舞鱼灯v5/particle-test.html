@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>粒子场景独立测试 · ParticleScene</title>
+<script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.8.0/dist/es-module-shims.min.js"></script>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"
+}}
+</script>
+<style>
+    html, body { margin: 0; height: 100%; background: #050508; overflow: hidden; font-family: system-ui, sans-serif; }
+    #stage { position: fixed; inset: 0; }
+    #panel {
+        position: fixed; top: 12px; left: 12px; z-index: 10; color: #e8d9a0;
+        background: rgba(10,12,20,0.6); padding: 12px 14px; border-radius: 10px;
+        max-width: 280px; font-size: 13px; line-height: 1.6;
+    }
+    #panel button { margin: 2px; padding: 4px 8px; background: #1a2030; color: #e8d9a0; border: 1px solid #3a4358; border-radius: 6px; cursor: pointer; }
+    #panel button.active { background: #d4af37; color: #1a1208; }
+    #panel input[type=range] { width: 100%; }
+    #status { color: #9fb3c8; font-size: 12px; }
+</style>
+</head>
+<body>
+    <div id="stage"></div>
+    <div id="panel">
+        <div><b>ParticleScene 独立测试</b></div>
+        <div>模型：<span id="model-btns"></span></div>
+        <div>FX：<span id="fx-btns"></span></div>
+        <div>溶解：<input id="dissolve" type="range" min="0" max="1" step="0.01" value="0"></div>
+        <div id="status">加载中…</div>
+        <div style="font-size:11px;color:#7a8aa0">拖拽旋转；滑块控制实体⇄粒子溶解。无需摄像头。</div>
+    </div>
+
+<script type="module">
+import { ParticleScene } from './src/particle-scene.js';
+import { PARTICLE_MODELS } from './src/fish-manifest.js';
+
+const stage = document.getElementById('stage');
+const scene = new ParticleScene(stage, { handDrivesDissolve: false });
+const noHand = { detected: false };
+const status = document.getElementById('status');
+
+await scene.init();
+
+// 模型按钮
+const mb = document.getElementById('model-btns');
+PARTICLE_MODELS.forEach((m, i) => {
+    const b = document.createElement('button');
+    b.textContent = m.name;
+    if (i === 0) b.classList.add('active');
+    b.onclick = async () => {
+        mb.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        status.textContent = `加载 ${m.name}…`;
+        try { await scene.loadModel(m.url); status.textContent = `✓ ${m.name}`; }
+        catch (e) { status.textContent = `✗ ${m.name} 加载失败: ${e.message}`; }
+    };
+    mb.appendChild(b);
+});
+
+// FX 按钮
+const fxNames = ['标准', '爆炸', '漩涡', '萤火', '星尘'];
+const fb = document.getElementById('fx-btns');
+fxNames.forEach((name, i) => {
+    const b = document.createElement('button');
+    b.textContent = name;
+    if (i === 0) b.classList.add('active');
+    b.onclick = () => {
+        fb.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        b.classList.add('active');
+        scene.setFxMode(i);
+    };
+    fb.appendChild(b);
+});
+
+document.getElementById('dissolve').oninput = (e) => scene.setDissolve(parseFloat(e.target.value));
+
+try { await scene.loadModel(PARTICLE_MODELS[0].url); status.textContent = `✓ ${PARTICLE_MODELS[0].name}`; }
+catch (e) { status.textContent = `✗ 加载失败: ${e.message}`; }
+
+let last = performance.now();
+function loop(now) {
+    requestAnimationFrame(loop);
+    const dt = (now - last) / 1000; last = now;
+    scene.update(dt, noHand);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
