@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>大良鱼灯 · 数字工艺体验</title>
+  <style>
+    @import url("https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&display=swap");
+    :root { --paper:#e8d9ba; --gold:#b98a4b; --gold-hi:#f1c77e; --line:rgba(211,168,102,.2); }
+    * { box-sizing:border-box; }
+    html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#05090a; color:var(--paper); }
+    body { font-family:"Noto Serif SC","Songti SC",serif; background:radial-gradient(ellipse at 72% 44%,rgba(41,63,55,.24),transparent 42%),radial-gradient(circle at 15% 85%,rgba(122,75,38,.08),transparent 36%),linear-gradient(120deg,#090d0d,#050809 70%); }
+    body::before { content:""; position:fixed; inset:0; pointer-events:none; opacity:.2; mix-blend-mode:screen; background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.28'/%3E%3C/svg%3E"); }
+    #app { display:grid; grid-template-columns:minmax(350px,36vw) 1fr; width:100%; height:100%; }
+    .panel { position:relative; z-index:2; padding:42px 38px 34px 48px; border-right:1px solid var(--line); background:linear-gradient(90deg,rgba(8,14,14,.94),rgba(8,14,14,.72)); backdrop-filter:blur(10px); display:flex; flex-direction:column; }
+    .eyebrow { display:flex; align-items:center; gap:12px; color:var(--gold-hi); font-size:11px; letter-spacing:.42em; }
+    .eyebrow::before { content:""; width:32px; height:1px; background:var(--gold); }
+    .brand { margin-top:14px; color:rgba(241,220,180,.75); font-size:12px; letter-spacing:.36em; }
+    .steps { display:flex; gap:7px; margin:46px 0 38px; }
+    .step { width:48px; height:48px; color:rgba(224,202,163,.38); background:rgba(225,183,111,.025); border:1px solid rgba(218,175,103,.18); cursor:pointer; font:500 12px inherit; letter-spacing:.08em; transition:.45s ease; position:relative; }
+    .step:hover { color:var(--gold-hi); border-color:rgba(241,199,126,.55); }
+    .step.active { color:#111; background:var(--gold-hi); border-color:var(--gold-hi); box-shadow:0 0 24px rgba(211,148,65,.28); }
+    .step.active::after { content:""; position:absolute; inset:-6px; border:1px solid rgba(241,199,126,.35); }
+    .copy { min-height:290px; transition:opacity .32s ease,transform .32s ease; }
+    .copy.switching { opacity:0; transform:translateY(10px); }
+    .counter { font:500 12px/1 sans-serif; letter-spacing:.28em; color:var(--gold); margin-bottom:18px; }
+    h1 { margin:0; color:#f0dfbd; font-size:clamp(38px,4vw,61px); font-weight:500; letter-spacing:.13em; text-shadow:0 0 22px rgba(220,169,91,.11); }
+    .poem { margin:15px 0 27px; color:var(--gold-hi); font-size:13px; letter-spacing:.15em; opacity:.72; }
+    .desc { max-width:390px; color:rgba(236,222,192,.72); font-size:15px; line-height:2.05; letter-spacing:.09em; }
+    .gesture { margin-top:auto; padding:16px 18px; border:1px solid rgba(215,170,103,.19); background:rgba(173,118,58,.035); }
+    .gesture-top { display:flex; justify-content:space-between; color:var(--gold); font:500 10px/1.3 sans-serif; letter-spacing:.26em; }
+    .gesture p { margin:12px 0 0; color:#ead5ad; font-size:14px; letter-spacing:.13em; animation:breathe 2.5s ease-in-out infinite; }
+    .gesture .gesture-en { margin-top:7px; color:rgba(234,213,175,.5); font:10px/1.55 sans-serif; letter-spacing:.08em; animation:none; }
+    .foot { display:flex; justify-content:space-between; margin-top:24px; color:rgba(237,218,181,.3); font:10px/1 sans-serif; letter-spacing:.17em; }
+    .visual { position:relative; min-width:0; overflow:hidden; }
+    canvas { display:block; width:100%; height:100%; }
+    .visual::before,.visual::after { content:""; position:absolute; pointer-events:none; inset:25px; border:1px solid rgba(199,153,91,.09); }
+    .visual::after { inset:35px; border-color:rgba(199,153,91,.035); }
+    .stage-label { position:absolute; left:54px; top:49px; color:rgba(229,203,157,.44); font:10px/1.6 sans-serif; letter-spacing:.26em; }
+    .stage-label b { color:rgba(241,199,126,.78); font-weight:500; }
+    .reveal-state { position:absolute; left:54px; top:91px; color:rgba(234,213,175,.5); font:9px/1.5 sans-serif; letter-spacing:.16em; transition:color .45s ease,text-shadow .45s ease; }
+    .reveal-state.detected { color:rgba(241,199,126,.9); text-shadow:0 0 14px rgba(220,157,71,.5); }
+    .coordinates { position:absolute; left:54px; bottom:52px; color:rgba(229,203,157,.28); font:9px/1.8 monospace; letter-spacing:.15em; }
+    .craft-video { position:absolute; z-index:3; top:48px; right:52px; width:clamp(260px,25vw,320px); padding:10px; border:1px solid rgba(211,168,102,.24); background:rgba(5,10,11,.58); box-shadow:0 0 30px rgba(171,111,46,.09); backdrop-filter:blur(10px); transition:transform .4s ease,border-color .4s ease,box-shadow .4s ease; }
+    .craft-video:hover { transform:scale(1.025); border-color:rgba(241,199,126,.52); box-shadow:0 0 38px rgba(171,111,46,.18); }
+    .video-head,.video-foot { display:flex; align-items:center; justify-content:space-between; color:rgba(234,213,175,.62); font:10px/1 sans-serif; letter-spacing:.15em; }
+    .video-head { padding:1px 2px 9px; color:var(--gold-hi); }
+    .video-head small { color:rgba(234,213,175,.44); font-size:9px; letter-spacing:.12em; }
+    .video-frame { position:relative; aspect-ratio:16/9; overflow:hidden; background:rgba(16,21,20,.92); border:1px solid rgba(211,168,102,.16); }
+    .video-frame video { width:100%; height:100%; display:block; object-fit:cover; opacity:.82; filter:saturate(.86) contrast(1.04); }
+    .video-frame::after { content:""; position:absolute; inset:0; pointer-events:none; background:linear-gradient(135deg,rgba(232,185,106,.1),transparent 48%); }
+    .video-pending { position:absolute; inset:0; display:none; place-items:center; color:rgba(241,199,126,.66); font:10px/1.6 sans-serif; letter-spacing:.12em; text-align:center; }
+    .video-foot { padding:9px 2px 1px; }
+    .video-foot .step-video-title { color:rgba(241,220,180,.88); }
+    .video-foot .video-status { color:rgba(202,158,92,.58); font-size:9px; }
+    .gesture-camera { position:absolute; z-index:4; left:52px; bottom:24px; width:210px; height:210px; padding:10px; border:1px solid rgba(211,168,102,.2); background:rgba(5,10,11,.68); box-shadow:0 0 26px rgba(171,111,46,.07); backdrop-filter:blur(10px); display:flex; flex-direction:column; }
+    .camera-head,.camera-foot { display:flex; justify-content:space-between; align-items:center; color:rgba(241,199,126,.8); font:9px/1.2 sans-serif; letter-spacing:.12em; }
+    .camera-frame { position:relative; margin:8px 0; flex:1; min-height:0; overflow:hidden; border:1px solid rgba(211,168,102,.14); background:rgba(10,16,16,.94); }
+    .camera-frame video { width:100%; height:100%; display:block; object-fit:cover; transform:scaleX(-1); opacity:.78; }
+    .camera-idle { position:absolute; inset:0; display:grid; place-items:center; color:rgba(234,213,175,.44); font:9px/1.7 sans-serif; letter-spacing:.1em; text-align:center; background:rgba(8,13,14,.82); }
+    .gesture-start { width:100%; padding:8px 6px; cursor:pointer; border:1px solid rgba(241,199,126,.32); color:var(--gold-hi); background:rgba(185,132,61,.08); font:9px/1 sans-serif; letter-spacing:.13em; transition:.3s ease; }
+    .gesture-start:hover { background:rgba(185,132,61,.18); border-color:rgba(241,199,126,.66); }
+    .gesture-live { color:rgba(232,188,110,.82); }
+    .loading { position:absolute; inset:0; display:grid; place-items:center; z-index:5; background:#080d0e; transition:opacity .8s ease; }
+    .loading.hide { opacity:0; pointer-events:none; }
+    .loading-ring { width:86px; height:86px; border:1px solid rgba(231,182,105,.2); border-top-color:var(--gold-hi); border-radius:50%; animation:spin 1.4s linear infinite; }
+    .loading-text { position:absolute; color:var(--gold-hi); font-size:11px; letter-spacing:.24em; }
+    .controls { position:absolute; right:52px; bottom:24px; width:210px; height:210px; padding:15px 16px 12px; border:1px solid rgba(211,168,102,.17); background:rgba(5,10,11,.58); backdrop-filter:blur(10px); }
+    .controls header { display:flex; justify-content:space-between; margin-bottom:11px; color:var(--gold-hi); font:10px/1 sans-serif; letter-spacing:.18em; }
+    .control { display:grid; grid-template-columns:1fr 56px; align-items:center; gap:8px; margin:8px 0; color:rgba(234,213,175,.52); font:10px/1 sans-serif; letter-spacing:.08em; }
+    input[type="range"] { appearance:none; width:100%; height:2px; outline:0; background:rgba(217,170,101,.17); accent-color:var(--gold-hi); }
+    input[type="range"]::-webkit-slider-thumb { appearance:none; width:7px; height:7px; border-radius:50%; background:var(--gold-hi); box-shadow:0 0 10px var(--gold); }
+    .toggle { cursor:pointer; color:rgba(234,213,175,.52); }
+    .toggle input { vertical-align:middle; accent-color:var(--gold); }
+    .error { position:fixed; inset:auto 20px 20px; z-index:10; padding:12px 16px; background:#361b18; color:#ffd9ba; font:12px sans-serif; display:none; }
+    .craft-exit-cue { position:absolute; left:50%; bottom:38px; transform:translateX(-50%) translateY(16px); z-index:6; width:min(520px,calc(100% - 48px)); padding:16px 22px 14px; text-align:center; border:1px solid rgba(211,168,102,.32); background:rgba(5,10,11,.78); backdrop-filter:blur(12px); box-shadow:0 0 36px rgba(171,111,46,.14); opacity:0; visibility:hidden; pointer-events:none; transition:opacity .55s ease,transform .55s ease,visibility .55s ease; }
+    .craft-exit-cue.is-visible { opacity:1; visibility:visible; transform:translateX(-50%) translateY(0); }
+    .craft-exit-kicker { color:var(--gold-hi); font:500 10px/1.3 sans-serif; letter-spacing:.28em; margin-bottom:10px; }
+    .craft-exit-title { margin:0; color:#f0dfbd; font-size:15px; letter-spacing:.14em; line-height:1.75; }
+    .craft-exit-sub { margin:8px 0 0; color:rgba(234,213,175,.52); font:9px/1.5 sans-serif; letter-spacing:.12em; }
+    .craft-exit-hands { margin-top:12px; color:rgba(241,199,126,.75); font-size:18px; animation:sweepPulse 1.6s ease-in-out infinite; }
+    @keyframes sweepPulse { 50% { transform:translateX(24px); opacity:.55; } }
+    @keyframes spin { to { transform:rotate(360deg); } }
+    @keyframes breathe { 50% { opacity:.48; text-shadow:0 0 14px rgba(239,190,113,.55); } }
+    @media (max-width:800px) {
+      #app { grid-template-columns:1fr; grid-template-rows:43% 57%; }
+      .panel { padding:18px 25px 12px; border-right:0; border-bottom:1px solid var(--line); }
+      .brand { margin-top:10px; font-size:10px; } .steps { margin:16px 0 13px; } .step { width:40px; height:40px; }
+      .copy { min-height:0; } .counter { margin-bottom:10px; } h1 { font-size:28px; } .poem { margin:8px 0 0; } .desc { display:none; }
+      .gesture { margin-top:9px; padding:9px 13px; } .gesture p { margin-top:6px; font-size:12px; } .gesture .gesture-en { margin-top:4px; font-size:9px; } .foot { display:none; } .controls { right:25px; bottom:8px; width:190px; height:190px; }
+      .stage-label { left:30px; top:30px; } .reveal-state { left:30px; top:70px; } .coordinates { display:none; } .craft-video { top:28px; right:25px; width:210px; padding:7px; } .video-head,.video-foot { font-size:8px; } .video-head { padding-bottom:6px; } .video-foot { padding-top:6px; } .gesture-camera { left:25px; bottom:8px; width:190px; height:190px; }
+    }
+      /* 倒计时面板：与底部 Gesture Sensor / Particle Field 对齐，避免遮挡中心模型 */
+    #countdown-badge { position:fixed; left:calc(36vw + (100vw - 36vw)/2); top:auto; bottom:24px; width:210px; height:210px; transform:translateX(-50%) scale(.96); z-index:60; display:none; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding:16px; background:rgba(8,12,12,.72); border:1px solid rgba(241,199,126,.42); backdrop-filter:blur(10px); opacity:0; transition:opacity .3s ease, transform .3s ease; pointer-events:none; }
+    #countdown-badge.show { display:flex; opacity:1; transform:translateX(-50%) scale(1); }
+    #countdown-badge::before { content:"COUNTDOWN"; position:absolute; left:16px; top:15px; color:var(--gold-hi); font:10px/1 sans-serif; letter-spacing:.18em; }
+    #countdown-badge::after { content:"工艺影像"; position:absolute; right:16px; top:15px; color:rgba(241,199,126,.7); font:9px/1 sans-serif; letter-spacing:.12em; }
+    #countdown-badge .cb-num { font:600 58px/1 "Noto Serif SC",serif; color:#f1c77e; text-shadow:0 0 22px rgba(241,199,126,.55); min-width:72px; text-align:center; }
+    #countdown-badge .cb-cap { color:rgba(236,222,192,.78); font:10px/1.7 sans-serif; letter-spacing:.12em; text-align:center; }
+    @media (max-width:800px) {
+      #countdown-badge { left:50%; bottom:8px; width:190px; height:190px; }
+      #countdown-badge .cb-num { font-size:50px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside class="panel">
+      <div class="eyebrow">非遗数字工艺</div><div class="brand">大 良 鱼 灯 · DALIANG FISH LANTERN</div>
+      <nav class="steps" aria-label="工艺步骤"></nav>
+      <main class="copy"><div class="counter"></div><h1></h1><div class="poem"></div><div class="desc"></div></main>
+      <section class="gesture"><div class="gesture-top"><span>GESTURE · 手势体验</span><span class="gesture-name"></span></div><p class="gesture-hint"></p><p class="gesture-en"></p></section>
+      <footer class="foot"><span>01 — 04 CRAFT ARCHIVE</span><span>键盘数字键切换</span></footer>
+    </aside>
+    <section class="visual">
+      <div class="loading"><div class="loading-ring"></div><div class="loading-text">采集工艺纹理</div></div>
+      <div class="stage-label">DIGITAL CRAFT FIELD<br><b>GLB SURFACE PARTICLES</b></div>
+      <div class="reveal-state">WAITING FOR GESTURE · 等待手势输入</div>
+      <div class="coordinates">22.8462° N / 113.2524° E<br>SHUNDE · GUANGDONG</div>
+      <aside class="craft-video">
+        <div class="video-head"><span>CRAFT VIDEO</span><small>工艺影像</small></div>
+        <div class="video-frame">
+          <video class="step-video" autoplay loop muted playsinline preload="auto"></video>
+          <div class="video-pending">视频素材待导入<br>VIDEO PENDING</div>
+        </div>
+        <div class="video-foot"><span class="step-video-title"></span><span class="video-status">LOOP · 06S</span></div>
+      </aside>
+      <aside class="gesture-camera">
+        <div class="camera-head"><span>GESTURE SENSOR</span><span class="gesture-live">STANDBY</span></div>
+        <div class="camera-frame">
+          <video class="camera-preview" autoplay muted playsinline></video>
+          <div class="camera-idle">摄像头待开启<br>CAMERA STANDBY</div>
+        </div>
+        <button class="gesture-start" type="button">开启手势识别</button>
+        <div class="camera-foot"><span class="gesture-detected">等待手势</span><span>MEDIAPIPE</span></div>
+      </aside>
+      <div id="craft-exit-cue" class="craft-exit-cue" aria-live="polite">
+        <div class="craft-exit-kicker">四序工艺已完成 · CRAFT COMPLETE</div>
+        <p class="craft-exit-title">左右挥动手掌，领取你的鱼灯</p>
+        <p class="craft-exit-sub">SWEEP YOUR PALM LEFT AND RIGHT TO CLAIM YOUR LANTERN</p>
+        <div class="craft-exit-hands" aria-hidden="true">👋</div>
+      </div>
+      <section class="controls">
+        <header><span>PARTICLE FIELD</span><span>实时调节</span></header>
+        <label class="control">密度 DENSITY<input id="density" type="range" min=".2" max="1" value=".94" step=".02"></label>
+        <label class="control">粒径 SIZE<input id="size" type="range" min=".5" max="4" value="2.15" step=".1"></label>
+        <label class="control">辉光 GLOW<input id="glow" type="range" min=".4" max="3" value="2.05" step=".1"></label>
+        <label class="control">微扰 NOISE<input id="noise" type="range" min="0" max=".28" value=".12" step=".01"></label>
+        <label class="control">旋转 SPEED<input id="speed" type="range" min="0" max=".45" value=".12" step=".01"></label>
+        <label class="control toggle">保留模型色彩 <input id="preserve" type="checkbox" checked></label>
+      </section>
+    </section>
+  </div>
+  <div class="error"></div>
+  <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"}}</script>
+  <script type="module">
+    import * as THREE from "three";
+    import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+    import { MeshSurfaceSampler } from "three/addons/math/MeshSurfaceSampler.js";
+    import { FilesetResolver, GestureRecognizer } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18";
+    const ASSET_VERSION="20260613-v6";
+    const withV=u=>u+(u.includes("?")?"&":"?")+"v="+ASSET_VERSION;
+    const steps=[
+      {id:1,title:"画模描线",poem:"一笔起形 · 游鱼初现",gesture:"捏合 PINCH",hint:"食指与拇指轻轻捏合，唤出鱼灯的第一道轮廓。",hintEn:"Pinch with your thumb and index finger to reveal the first fish outline.",model:"./models/fish-outline.glb",video:"./videos/craft-01.mp4",tint:[.96,.69,.35],desc:"画模描线，是匠人制灯的第一笔。轮廓定了，鱼灯才有形。一笔一划间，鱼影渐渐成为灯的模样。"},
+      {id:2,title:"熏竹扎架",poem:"竹篾为骨 · 火候成形",gesture:"剪刀手",hint:"比出剪刀手，生成骨架",model:"./models/fish-skeleton.glb",video:"./videos/craft-02.mp4",tint:[.84,.57,.25],desc:"顺德匠人先熏后刮，让竹篾柔韧可弯。火候调和，意在成形，撑起鱼灯灵动轻巧的骨架。"},
+      {id:3,title:"扪纱描鳞",poem:"纱覆竹骨 · 鳞光渐生",gesture:"握拳 → 张开",hint:"握拳后张开，覆纱成形",model:"./models/fish-fabric.glb",video:"./videos/craft-03.mp4",tint:[.88,.87,.77],desc:"糊胶打纱，平整服帖。轻纱覆上竹骨，再细细描绘鳞片，鱼身的纹理与神态逐渐清晰。"},
+      {id:4,title:"着色点睛",poem:"浓淡落彩 · 点睛成韵",gesture:"OK 手势",hint:"做出 OK 手势，点染上色",model:"./models/fish-colored.glb",video:"./videos/craft-04.mp4",tint:[1,.45,.17],desc:"着色是鱼灯最喜庆的一步。色彩与贴片层层映衬，鱼鳞在明快色彩中浮现。最后点睛成韵，一盏鱼灯在此刻完成。"}
+    ];
+    const visual=document.querySelector(".visual"),renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});
+    renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(visual.clientWidth,visual.clientHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;visual.prepend(renderer.domElement);
+    const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x071011,.045);
+    const camera=new THREE.PerspectiveCamera(38,visual.clientWidth/visual.clientHeight,.1,100);camera.position.set(0,0,12);
+    // ===== 实体工艺时序：手势=揭示本步模型（入口），粒子承担凝形与工序间过渡 =====
+    const SOLID_HOLD_MS=18000;        // 等待手势期：无手势 18s 自动揭示下一道工序
+    const ADVANCE_WARNING_MS=15500;   // 自动揭示前的文字提示
+    const TRANSITION_MS=2500;         // 粒子过渡总时长（溶解→形变→凝聚）
+    const COMPLETE_HOLD_MS=5000;      // 末步 colored 显形后停留时长，随后 completeExperience
+    const DISSOLVE_END=.22,CONDENSE_START=.78,MORPH_START=.15,MORPH_END=.88;
+    const clamp01=x=>Math.min(1,Math.max(0,x)),easeInOut=t=>{t=clamp01(t);return t*t*(3-2*t)};
+    const MAX_POINTS=72000,group=new THREE.Group(),geometry=new THREE.BufferGeometry(),positions=new Float32Array(MAX_POINTS*3),targets=new Float32Array(MAX_POINTS*3),scatter=new Float32Array(MAX_POINTS*3),colorsA=new Float32Array(MAX_POINTS*3),colorsB=new Float32Array(MAX_POINTS*3),sizes=new Float32Array(MAX_POINTS),randoms=new Float32Array(MAX_POINTS);
+    scene.add(group);
+    for(let i=0;i<MAX_POINTS;i++){const r=3.8+Math.random()*5.5,a=Math.random()*Math.PI*2,z=(Math.random()-.5)*7;scatter[i*3]=Math.cos(a)*r;scatter[i*3+1]=Math.sin(a)*r;scatter[i*3+2]=z;randoms[i]=Math.random();sizes[i]=.4+Math.random()*.9}
+    geometry.setAttribute("position",new THREE.BufferAttribute(positions,3));geometry.setAttribute("aTarget",new THREE.BufferAttribute(targets,3));geometry.setAttribute("aScatter",new THREE.BufferAttribute(scatter,3));geometry.setAttribute("color",new THREE.BufferAttribute(colorsA,3));geometry.setAttribute("aColorB",new THREE.BufferAttribute(colorsB,3));geometry.setAttribute("aSize",new THREE.BufferAttribute(sizes,1));geometry.setAttribute("aRandom",new THREE.BufferAttribute(randoms,1));
+    const uniforms={uTime:{value:0},uMorph:{value:0},uFade:{value:0},uSize:{value:2.15},uGlow:{value:2.05},uNoise:{value:.12},uDensity:{value:.94},uTint:{value:new THREE.Color()},uPreserve:{value:1},uScatterAmp:{value:1.5}};
+    const material=new THREE.ShaderMaterial({uniforms,vertexColors:true,transparent:true,depthWrite:false,blending:THREE.NormalBlending,vertexShader:`attribute vec3 aTarget;attribute vec3 aColorB;attribute vec3 aScatter;attribute float aSize;attribute float aRandom;varying vec3 vColor;varying float vAlpha;uniform float uTime,uMorph,uFade,uSize,uNoise,uDensity,uScatterAmp;uniform vec3 uTint;uniform float uPreserve;void main(){float visible=step(aRandom,uDensity);float m=smoothstep(0.,1.,uMorph);vec3 pos=mix(position,aTarget,m);float puff=sin(m*3.14159265);pos+=normalize(aScatter)*puff*uScatterAmp*(.35+aRandom*.85);float phase=pos.x*1.35+pos.y*.72+aRandom*6.28;pos.y+=sin(uTime*2.2+phase)*uNoise*1.8;pos.z+=cos(uTime*1.8+phase)*uNoise*1.1;vec4 mv=modelViewMatrix*vec4(pos,1.);gl_Position=projectionMatrix*mv;gl_PointSize=visible*uSize*aSize*(30./-mv.z);vec3 modelCol=mix(color,aColorB,m);vColor=mix(uTint,modelCol,uPreserve);vAlpha=visible*uFade*(.6+.2*sin(aRandom*13.+uTime*1.7));}`,fragmentShader:`varying vec3 vColor;varying float vAlpha;uniform float uGlow;void main(){vec2 uv=gl_PointCoord-.5;float d=length(uv);if(d>.5)discard;float soft=smoothstep(.5,.08,d);vec3 col=vColor*(.75+soft*.28)*(.7+uGlow*.18);gl_FragColor=vec4(col,soft*vAlpha*.86);}`});
+    const points=new THREE.Points(geometry,material);points.visible=false;points.frustumCulled=false;group.add(points);
+    const solidRoot=new THREE.Group();group.add(solidRoot);   // 实体与粒子同挂 group，旋转/拖拽共享，过渡形态对齐
+    const dustGeo=new THREE.BufferGeometry(),dustPos=new Float32Array(1200*3);for(let i=0;i<dustPos.length;i+=3){dustPos[i]=(Math.random()-.5)*24;dustPos[i+1]=(Math.random()-.5)*15;dustPos[i+2]=(Math.random()-.5)*8-2}dustGeo.setAttribute("position",new THREE.BufferAttribute(dustPos,3));
+    const dust=new THREE.Points(dustGeo,new THREE.PointsMaterial({color:0x977243,size:.018,transparent:true,opacity:.43,blending:THREE.AdditiveBlending}));scene.add(dust);
+    // ===== 灯光：每步 tint 微调；骨架步（index 1）暖色边缘光突出竹篾 =====
+    const hemi=new THREE.HemisphereLight(0xffe8c2,0x141009,.55),keyLight=new THREE.DirectionalLight(0xffd9a0,1.05),fillLight=new THREE.DirectionalLight(0x7e93a8,.3),rimLight=new THREE.DirectionalLight(0xffb35e,.4);
+    keyLight.position.set(4.5,5.5,6.5);fillLight.position.set(-5,1.5,4);rimLight.position.set(-4.5,2.5,-6);scene.add(hemi,keyLight,fillLight,rimLight);
+    const lightTargets={keyColor:new THREE.Color(0xffd9a0),keyIntensity:1.05,rimColor:new THREE.Color(0xffb35e),rimIntensity:.4};
+    function applyStepMood(step,index){uniforms.uTint.value.setRGB(...step.tint);lightTargets.keyColor.setRGB(1,.88,.68).lerp(new THREE.Color(...step.tint),index===3?.62:.4);lightTargets.keyIntensity=index===3?1.1:1.05;lightTargets.rimIntensity=index===1?1.75:.4;if(index===1)lightTargets.rimColor.setRGB(1,.58,.24);else lightTargets.rimColor.setRGB(1,.72,.4)}
+    const loader=new GLTFLoader(),gltfCache=new Map(),entryCache=new Map(),tmp=new THREE.Vector3(),tmpColor=new THREE.Color();
+    let dragX=0,pointerDown=false,lastX=0,rotationSpeed=.12,activeStep=0,autoNextTimer=0,advanceWarningTimer=0;
+    let pendingRevealIndex=-1,revealCountdownTimer=0,revealMode="video",revealDeadline=0,revealLastTime=0,completeCountdownTimer=0;   // 手势成功后「看完本轮视频再揭示」等待态 + 末步完成倒计时
+    let phase="boot",currentEntry=null,incomingEntry=null,phaseStart=0,uiStep=-1;   // boot|awaiting|loading|transition|solid|complete
+    const ui={steps:document.querySelector(".steps"),copy:document.querySelector(".copy"),counter:document.querySelector(".counter"),title:document.querySelector("h1"),poem:document.querySelector(".poem"),desc:document.querySelector(".desc"),gesture:document.querySelector(".gesture-name"),hint:document.querySelector(".gesture-hint"),hintEn:document.querySelector(".gesture-en"),loading:document.querySelector(".loading"),video:document.querySelector(".step-video"),videoTitle:document.querySelector(".step-video-title"),videoPending:document.querySelector(".video-pending"),camera:document.querySelector(".camera-preview"),cameraIdle:document.querySelector(".camera-idle"),gestureStart:document.querySelector(".gesture-start"),gestureLive:document.querySelector(".gesture-live"),gestureDetected:document.querySelector(".gesture-detected"),revealState:document.querySelector(".reveal-state")};
+    function syncVideo(step){ui.videoPending.style.display="none";ui.video.style.display="block";ui.video.pause();ui.video.src=withV(step.video);ui.video.load();ui.video.play().catch(()=>{});ui.videoTitle.textContent=`0${step.id}  ${step.title}`}
+    ui.video.addEventListener("error",()=>{ui.video.style.display="none";ui.videoPending.style.display="grid"});
+    steps.forEach((s,i)=>{const b=document.createElement("button");b.className="step";b.textContent=`0${s.id}`;b.title=s.title;b.addEventListener("click",()=>revealStep(i));ui.steps.appendChild(b)});
+    function loadGLB(url){if(!gltfCache.has(url))gltfCache.set(url,new Promise((resolve,reject)=>loader.load(withV(url),resolve,undefined,reject)));return gltfCache.get(url)}
+    const palettes={1:[[.76,.68,.54],[.98,.73,.22],[1,.88,.5]],2:[[.54,.31,.11],[.96,.68,.24],[1,.86,.48]],3:[[.55,.68,.66],[.9,.87,.72],[1,.95,.82]],4:[[.92,.18,.08],[1,.5,.08],[1,.84,.24]]};
+    function weaveColor(x,y,z,seed,step){const p=palettes[step.id],wave1=Math.sin(x*1.7+y*1.1+seed),wave2=Math.cos(y*1.9-z*1.3+seed*1.7),wave3=Math.sin((x+z)*1.25+seed*.5),mix=.5+(wave1+wave2+wave3)/6;if(step.id===1){const line=Math.abs(Math.sin(x*3.1+y*2.35+seed*2.4)+Math.cos(y*2.7-z*1.65-seed))*.5;if(line>.73)return tmpColor.setRGB(.99,.69,.16);if(line>.59)return tmpColor.setRGB(.96,.81,.48);return tmpColor.setRGB(.79,.72,.6)}const a=mix<.52?p[0]:p[1],b=mix<.52?p[1]:p[2],t=mix<.52?mix/.52:(mix-.52)/.48;tmpColor.setRGB(...a).lerp(new THREE.Color(...b),t);return tmpColor}
+    // ===== 实体条目：实体 wrapper 与粒子采样共用同一套 center/scale 归一化（7.2/maxDim）=====
+    function prepareEntry(step){
+      if(entryCache.has(step.id))return entryCache.get(step.id);
+      const job=(async()=>{
+        const gltf=await loadGLB(step.model);
+        gltf.scene.updateMatrixWorld(true);
+        const meshes=[];gltf.scene.traverse(o=>{if(o.isMesh&&o.geometry?.attributes?.position)meshes.push(o)});
+        if(!meshes.length)throw new Error("模型中没有可采样网格");
+        const box=new THREE.Box3().setFromObject(gltf.scene),center=box.getCenter(new THREE.Vector3()),sz=box.getSize(new THREE.Vector3()),scale=7.2/Math.max(sz.x,sz.y,sz.z);
+        const samplers=meshes.map(m=>new MeshSurfaceSampler(m).build()),weights=meshes.map(m=>m.geometry.attributes.position.count),worldMats=meshes.map(m=>m.matrixWorld.clone()),total=weights.reduce((a,b)=>a+b,0);
+        const pts=new Float32Array(MAX_POINTS*3),cols=new Float32Array(MAX_POINTS*3);
+        for(let i=0;i<MAX_POINTS;i++){
+          let pick=Math.random()*total,idx=0;
+          while(idx<weights.length-1&&(pick-=weights[idx])>0)idx++;
+          samplers[idx].sample(tmp);
+          tmp.applyMatrix4(worldMats[idx]).sub(center).multiplyScalar(scale);
+          pts[i*3]=tmp.x;pts[i*3+1]=tmp.y;pts[i*3+2]=tmp.z;
+          const woven=weaveColor(tmp.x,tmp.y,tmp.z,i*.001,step);
+          cols[i*3]=woven.r;cols[i*3+1]=woven.g;cols[i*3+2]=woven.b;
+        }
+        const wrapper=new THREE.Group();
+        wrapper.scale.setScalar(scale);wrapper.position.copy(center).multiplyScalar(-scale);wrapper.add(gltf.scene);
+        const mats=[],seen=new Set();
+        meshes.forEach(m=>{(Array.isArray(m.material)?m.material:[m.material]).forEach(mat=>{if(!mat||seen.has(mat))return;seen.add(mat);mats.push({mat,baseOpacity:mat.opacity??1,baseTransparent:!!mat.transparent,baseDepthWrite:mat.depthWrite!==false})})});
+        return {step,wrapper,pts,cols,mats};
+      })();
+      entryCache.set(step.id,job);
+      job.catch(()=>entryCache.delete(step.id));
+      return job;
+    }
+    function setSolidFade(entry,k){
+      entry.mats.forEach(({mat,baseOpacity,baseTransparent,baseDepthWrite})=>{
+        if(k>=.999){mat.opacity=baseOpacity;mat.transparent=baseTransparent;mat.depthWrite=baseDepthWrite}
+        else{mat.transparent=true;mat.opacity=baseOpacity*k;mat.depthWrite=false}
+      });
+      entry.wrapper.visible=k>.002;
+    }
+    function applyEmissive(entry,tint,boost){entry.mats.forEach(({mat})=>{if(mat.emissive)mat.emissive.setRGB(tint[0]*boost,tint[1]*boost,tint[2]*boost)})}
+    function clearAdvanceTimers(){clearTimeout(autoNextTimer);clearTimeout(advanceWarningTimer);clearInterval(completeCountdownTimer);autoNextTimer=0;advanceWarningTimer=0;completeCountdownTimer=0}
+    function resetGestureState(){stableFrames=0;lastGesture="";fistArmed=false}
+    let craftAwaitingReturn=false,claimLastX=null,claimTravel=0,claimStable=0;
+    function notifyParent(type){try{if(window.parent&&window.parent!==window)window.parent.postMessage({type},location.origin)}catch(e){}}
+    function showReturnCue(){completeExperience()}
+    function completeExperience(){clearRevealWait();clearAdvanceTimers();phase="complete";craftAwaitingReturn=false;ui.revealState.textContent="CRAFT COMPLETE · 四序工艺已完成 · 自动领取鱼灯";ui.revealState.classList.add("detected");document.getElementById("craft-exit-cue")?.classList.remove("is-visible");notifyParent("craft-clap-exit")}
+    function tryClapReturn(landmarks){if(!craftAwaitingReturn||!landmarks?.length)return;const x=landmarks[0][9]?.x??landmarks[0][0].x;if(claimLastX===null){claimLastX=x;return}const dx=Math.abs(x-claimLastX);claimLastX=x;if(dx<.004){claimStable=Math.max(0,claimStable-1);return}claimTravel+=dx;claimStable++;ui.gestureDetected.textContent="左右挥手检测中…";if(claimTravel>.16&&claimStable>7){craftAwaitingReturn=false;claimLastX=null;claimTravel=0;claimStable=0;notifyParent("craft-clap-exit")}}
+    // ===== 状态机推进：手势=揭示「待揭示步」的模型 =====
+    // awaiting：屏幕无实体（仅 dust 微尘），待揭示步=0；solid(i)：实体 i 展示中，待揭示步=i+1
+    // 手势成功 / 18s 兜底 → queueRevealAfterVideo：等当前步工艺视频播完本轮（倒计时可视化）再 revealStep
+    const cdBadge=document.getElementById("countdown-badge");
+    function showCountdownBadge(n,cap){if(!cdBadge)return;cdBadge.querySelector(".cb-num").textContent=Math.max(1,Math.ceil(n));cdBadge.querySelector(".cb-cap").innerHTML=cap;cdBadge.classList.add("show")}
+    function hideCountdownBadge(){cdBadge?.classList.remove("show")}
+    function clearRevealWait(){clearInterval(revealCountdownTimer);revealCountdownTimer=0;pendingRevealIndex=-1;hideCountdownBadge()}
+    function videoRoundRemaining(){const v=ui.video,dur=v.duration;if(v.style.display==="none"||!isFinite(dur)||dur<=0||v.paused||v.readyState<1)return -1;return Math.max(0,dur-v.currentTime)}   // -1 = 视频不可用，退化为固定倒计时
+    function renderRevealCountdown(remain){ui.revealState.textContent=`GESTURE DETECTED · 手势已识别 · 看完工艺影像后进入下一步 · ${Math.max(1,Math.ceil(remain))}s`;showCountdownBadge(remain,"手势已识别<br>看完工艺影像 · 进入下一步")}
+    function fireQueuedReveal(){const idx=pendingRevealIndex;clearRevealWait();revealStep(idx)}
+    function queueRevealAfterVideo(index){
+      if(pendingRevealIndex>=0)return;   // 等待期内重复手势/重复兜底忽略
+      if(phase!=="awaiting"&&phase!=="solid")return;
+      if(index<0||index>=steps.length)return;
+      clearAdvanceTimers();
+      pendingRevealIndex=index;
+      let remain=videoRoundRemaining();
+      if(remain<0){revealMode="fixed";remain=phase==="awaiting"?3:6;revealDeadline=performance.now()+remain*1000}   // awaiting 视频没播→3s；其余不可用→6s
+      else{revealMode="video";revealLastTime=ui.video.currentTime}
+      ui.revealState.classList.add("detected");
+      renderRevealCountdown(remain);
+      revealCountdownTimer=setInterval(()=>{   // 每 0.5s 刷新倒计时；视频 ended / loop 回零点 / 余量耗尽 → 揭示
+        if(revealMode==="video"){
+          const v=ui.video;
+          if(v.style.display==="none"||!isFinite(v.duration)||v.duration<=0){revealMode="fixed";revealDeadline=performance.now()+6000}   // 等待中视频失效→退化 6s
+          else{
+            if(v.ended||v.currentTime<revealLastTime-.5){fireQueuedReveal();return}   // loop 回零点视为本轮播完
+            revealLastTime=v.currentTime;
+            const r=v.duration-v.currentTime;
+            if(r<=.25){fireQueuedReveal();return}
+            renderRevealCountdown(r);return;
+          }
+        }
+        const r=(revealDeadline-performance.now())/1000;
+        if(r<=0){fireQueuedReveal();return}
+        renderRevealCountdown(r);
+      },500);
+    }
+    function pendingStepIndex(){
+      if(phase==="awaiting")return 0;
+      if(phase==="solid")return activeStep+1<steps.length?activeStep+1:-1;
+      return -1;
+    }
+    function setUICopy(index){   // 文案/视频面板/步骤高亮始终指向「待揭示步」（揭示中则为正在成形的步）
+      if(index===uiStep)return;
+      uiStep=index;
+      const step=steps[index];
+      syncVideo(step);
+      document.querySelectorAll(".step").forEach((b,i)=>b.classList.toggle("active",i===index));
+      ui.copy.classList.add("switching");
+      setTimeout(()=>{ui.counter.textContent=`CRAFT  0${step.id} / 04`;ui.title.textContent=step.title;ui.poem.textContent=step.poem;ui.desc.textContent=step.desc;ui.gesture.textContent=step.gesture;ui.hint.textContent=step.hint;ui.hintEn.textContent=step.hintEn||"";ui.copy.classList.remove("switching")},190);
+    }
+    function enterAwaitingPhase(){   // 冷启动：屏幕中央无模型，UI 提示第 1 步手势（捏合）
+      phase="awaiting";phaseStart=performance.now();
+      activeStep=-1;currentEntry=null;incomingEntry=null;
+      points.visible=false;uniforms.uFade.value=0;
+      clearAdvanceTimers();resetGestureState();
+      setUICopy(0);applyStepMood(steps[0],0);
+      ui.revealState.textContent="AWAITING FIRST GESTURE · 比出捏合手势 · 唤出鱼灯的第一道轮廓";
+      ui.revealState.classList.remove("detected");
+      advanceWarningTimer=setTimeout(()=>{ui.revealState.textContent="即将自动起形 · 仍可比出捏合手势 · PINCH TO REVEAL"},ADVANCE_WARNING_MS);
+      autoNextTimer=setTimeout(()=>queueRevealAfterVideo(0),SOLID_HOLD_MS);   // 18s 无手势=视为手势成功，同样走「看完视频」倒计时
+      prepareEntry(steps[0]).catch(()=>{});   // 预载首个模型，捏合瞬间无卡顿
+    }
+    function enterSolidPhase(){
+      phase="solid";phaseStart=performance.now();
+      clearAdvanceTimers();
+      const next=activeStep+1;
+      if(next>=steps.length){   // 末步 colored 显形：每秒倒计时可视化，归零后自动完成（postMessage 协议不变）
+        let left=Math.ceil(COMPLETE_HOLD_MS/1000);
+        const renderDone=()=>{ui.revealState.textContent=`着色点睛完成 · ${left} 秒后进入鱼灯领取 · CRAFT COMPLETE`;showCountdownBadge(left,"着色点睛完成<br>即将进入鱼灯领取")};
+        renderDone();
+        ui.revealState.classList.add("detected");
+        completeCountdownTimer=setInterval(()=>{left--;if(left<=0)completeExperience();else renderDone()},1000);
+        return;
+      }
+      setUICopy(next);   // 实体展示期间，UI 切到下一道待揭示工序的文案与手势提示
+      ui.revealState.textContent=`WAITING FOR GESTURE · 等待手势 · 比出「${steps[next].gesture}」揭示下一道工序`;
+      ui.revealState.classList.remove("detected");
+      advanceWarningTimer=setTimeout(()=>{ui.revealState.textContent="即将自动揭示下一道工序 · 仍可比出手势 · PREPARE THE GESTURE"},ADVANCE_WARNING_MS);
+      autoNextTimer=setTimeout(()=>queueRevealAfterVideo(next),SOLID_HOLD_MS);   // 18s 无手势=视为手势成功，同样走「看完视频」倒计时
+      prepareEntry(steps[next]).catch(()=>{});   // 预载下一工序，手势瞬间无卡顿
+    }
+    function advanceStep(){   // 空格调试推进：等待「看完视频」期间=跳过等待立即揭示；否则揭示当前待揭示步；末步展示中则直接完成
+      if(pendingRevealIndex>=0){fireQueuedReveal();return}
+      if(phase!=="solid"&&phase!=="awaiting")return;
+      const target=pendingStepIndex();
+      if(target<0)completeExperience();else revealStep(target);
+    }
+    function beginTransition(from,to,step,index){
+      positions.set(from.pts);colorsA.set(from.cols);targets.set(to.pts);colorsB.set(to.cols);
+      geometry.attributes.position.needsUpdate=true;geometry.attributes.color.needsUpdate=true;geometry.attributes.aTarget.needsUpdate=true;geometry.attributes.aColorB.needsUpdate=true;
+      if(!to.wrapper.parent)solidRoot.add(to.wrapper);
+      setSolidFade(to,0);applyEmissive(to,step.tint,index===1?.26:(index===3?.3:.18));
+      incomingEntry=to;uniforms.uMorph.value=0;uniforms.uFade.value=0;points.visible=true;
+      phase="transition";phaseStart=performance.now();
+      ui.revealState.textContent="CRAFT WEAVING · 粒子织造 · 工序成形中";
+      ui.revealState.classList.add("detected");
+    }
+    function updateCraft(now){
+      if(phase==="transition"){
+        const t=Math.min(1,(now-phaseStart)/TRANSITION_MS);
+        const dissolve=easeInOut(t/DISSOLVE_END),condense=easeInOut((t-CONDENSE_START)/(1-CONDENSE_START));
+        if(currentEntry)setSolidFade(currentEntry,1-dissolve);
+        if(incomingEntry)setSolidFade(incomingEntry,condense);
+        uniforms.uMorph.value=clamp01((t-MORPH_START)/(MORPH_END-MORPH_START));
+        uniforms.uFade.value=Math.min(dissolve,1-condense);
+        if(t>=1){
+          if(currentEntry&&currentEntry!==incomingEntry){setSolidFade(currentEntry,0);solidRoot.remove(currentEntry.wrapper)}   // 同屏只留当前实体
+          currentEntry=incomingEntry;incomingEntry=null;
+          if(currentEntry)setSolidFade(currentEntry,1);
+          uniforms.uFade.value=0;points.visible=false;
+          enterSolidPhase();
+        }
+      }
+      keyLight.color.lerp(lightTargets.keyColor,.05);
+      keyLight.intensity+=(lightTargets.keyIntensity-keyLight.intensity)*.05;
+      rimLight.color.lerp(lightTargets.rimColor,.05);
+      rimLight.intensity+=(lightTargets.rimIntensity-rimLight.intensity)*.05;
+    }
+    async function revealStep(index){   // 揭示第 index 个模型：调试直跳与手势揭示共用此入口
+      if(index<0||index>=steps.length)return;
+      if(phase==="loading"||phase==="transition")return;
+      if(currentEntry&&index===activeStep)return;   // 该步模型已在展示
+      const step=steps[index],fromEntry=currentEntry;
+      activeStep=index;phase="loading";
+      clearRevealWait();clearAdvanceTimers();resetGestureState();
+      try{
+        const entry=await prepareEntry(step);
+        applyStepMood(step,index);
+        setUICopy(index);   // 正常流程下文案已是该步（待揭示步），此处幂等；数字键直跳时切到第 index 步
+        if(fromEntry&&entry===fromEntry){enterSolidPhase();return}
+        // 无在场实体（首次揭示）：从散乱粒子凝聚成形（描线起形）；否则实体间粒子过渡
+        beginTransition(fromEntry||{pts:scatter,cols:entry.cols},entry,step,index);
+      }catch(e){
+        const err=document.querySelector(".error");err.textContent=`模型加载失败：${e.message}`;err.style.display="block";
+        if(fromEntry){currentEntry=fromEntry;enterSolidPhase()}else enterAwaitingPhase();
+      }
+    }
+    window.handleGestureDetected=function(name){if(pendingRevealIndex>=0)return;const mapping={pinch:0,victory:1,fist_to_open:2,ok:3},target=pendingStepIndex();if(target<0||mapping[name]!==target)return;queueRevealAfterVideo(target)};
+    document.addEventListener("gesture-detected",event=>window.handleGestureDetected(event.detail));
+    let gestureRecognizer=null,lastVideoTime=-1,lastGesture="",stableFrames=0,lastSwitch=0,fistArmed=false,cameraLoop=0;
+    const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y,a.z-b.z);
+    function isPinchGesture(landmarks){if(!landmarks?.length)return false;const palm=dist(landmarks[0],landmarks[9])||.1;return dist(landmarks[4],landmarks[8])<Math.max(.045,palm*.34)}
+    function isOkGesture(landmarks){if(!landmarks?.length)return false;const palm=dist(landmarks[0],landmarks[9])||.1,ring=dist(landmarks[16],landmarks[13]),pinky=dist(landmarks[20],landmarks[17]),middle=dist(landmarks[12],landmarks[9]);return isPinchGesture(landmarks)&&middle>palm*.72&&ring>palm*.68&&pinky>palm*.62}
+    function commitGesture(name,label){const now=performance.now();if(name===lastGesture)stableFrames++;else{lastGesture=name;stableFrames=1}ui.gestureDetected.textContent=label||name;if(stableFrames<10||now-lastSwitch<1300)return;if(name==="Closed_Fist"){fistArmed=true;ui.gestureDetected.textContent="握拳已记录 · 请张开";return}if(name==="Open_Palm"&&fistArmed){fistArmed=false;lastSwitch=now;window.handleGestureDetected("fist_to_open")}else if(name==="PINCH"){lastSwitch=now;window.handleGestureDetected("pinch")}else if(name==="Victory"){lastSwitch=now;window.handleGestureDetected("victory")}else if(name==="OK"){lastSwitch=now;window.handleGestureDetected("ok")}}
+    function scanGestures(){if(!gestureRecognizer||ui.camera.readyState<2){cameraLoop=requestAnimationFrame(scanGestures);return}if(ui.camera.currentTime!==lastVideoTime){lastVideoTime=ui.camera.currentTime;const result=gestureRecognizer.recognizeForVideo(ui.camera,performance.now()),landmarks=result.landmarks?.[0],category=result.gestures?.[0]?.[0]?.categoryName||"None",label=pendingStepIndex()===0&&isPinchGesture(landmarks)?"PINCH":isOkGesture(landmarks)?"OK":category;if(craftAwaitingReturn)tryClapReturn(result.landmarks);else commitGesture(label,label==="None"?"等待有效手势":label)}cameraLoop=requestAnimationFrame(scanGestures)}
+    async function enableGestures(){ui.gestureStart.disabled=true;ui.gestureLive.textContent="CAMERA";ui.gestureStart.textContent="正在请求摄像头权限";try{if(!navigator.mediaDevices?.getUserMedia)throw new Error("当前浏览器未开放摄像头接口");const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"user",width:{ideal:640},height:{ideal:400}},audio:false});ui.camera.srcObject=stream;await ui.camera.play();ui.cameraIdle.style.display="none";ui.gestureLive.textContent="MODEL";ui.gestureDetected.textContent="摄像头已开启 · 正在加载模型";ui.gestureStart.textContent="正在加载识别模型";const vision=await FilesetResolver.forVisionTasks("https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.18/wasm");gestureRecognizer=await GestureRecognizer.createFromOptions(vision,{baseOptions:{modelAssetPath:withV("./models/gesture_recognizer.task"),delegate:"GPU"},runningMode:"VIDEO",numHands:2});ui.gestureLive.textContent="LIVE";ui.gestureStart.textContent="手势识别已开启";scanGestures()}catch(err){console.error("Gesture sensor error:",err);ui.gestureLive.textContent="ERROR";const detail=err?.name==="NotAllowedError"?"摄像头权限未允许":err?.name==="NotFoundError"?"未找到可用摄像头":err?.name==="NotReadableError"?"摄像头正被其他程序占用":(err?.message||"摄像头或模型加载失败");ui.gestureDetected.textContent=detail;ui.gestureStart.disabled=false;ui.gestureStart.textContent="重新开启手势识别"}}
+    ui.gestureStart.addEventListener("click",enableGestures);
+    addEventListener("keydown",e=>{if("1234".includes(e.key))revealStep(Number(e.key)-1);if(e.key===" "){if(craftAwaitingReturn)notifyParent("craft-clap-exit");else advanceStep()}});
+    Object.entries({density:"uDensity",size:"uSize",glow:"uGlow",noise:"uNoise"}).forEach(([id,key])=>document.querySelector(`#${id}`).addEventListener("input",e=>uniforms[key].value=Number(e.target.value)));
+    document.querySelector("#speed").addEventListener("input",e=>rotationSpeed=Number(e.target.value));document.querySelector("#preserve").addEventListener("input",e=>uniforms.uPreserve.value=e.target.checked?1:0);
+    visual.addEventListener("pointerdown",e=>{pointerDown=true;lastX=e.clientX});addEventListener("pointerup",()=>pointerDown=false);addEventListener("pointermove",e=>{if(pointerDown){dragX+=(e.clientX-lastX)*.006;lastX=e.clientX}});
+    addEventListener("resize",()=>{camera.aspect=visual.clientWidth/visual.clientHeight;camera.updateProjectionMatrix();renderer.setSize(visual.clientWidth,visual.clientHeight)});
+    function animate(now){requestAnimationFrame(animate);uniforms.uTime.value=now*.001;updateCraft(now);group.rotation.y=now*.00012+now*.0003*rotationSpeed+dragX;group.rotation.x=Math.sin(now*.00018)*.055;dust.rotation.y=now*.000018;dust.rotation.z=Math.sin(now*.00005)*.04;renderer.render(scene,camera)}
+    enterAwaitingPhase();setTimeout(()=>ui.loading.classList.add("hide"),500);animate(performance.now());   // 冷启动：无实体，仅微尘氛围，等待第 1 步手势
+    // 摄像头默认开启：父页面进入制灯视频时已释放摄像头（同源已授权），此处自动开启手势识别
+    setTimeout(()=>{ if(!gestureRecognizer){ enableGestures(); } }, 900);
+  </script>
+<div id="countdown-badge" aria-hidden="true">
+  <div class="cb-num">6</div>
+  <div class="cb-cap">看完工艺影像<br>即将进入下一步</div>
+</div>
+</body>
+</html>
