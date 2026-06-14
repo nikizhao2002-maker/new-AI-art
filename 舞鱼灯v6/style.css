@@ -1113,6 +1113,100 @@ body.particle-overlay-active #reveal-panel { display: flex; }
 .ritual-cue[data-cue="fishing"] .ritual-gesture {
     display: none;
 }
+.ritual-cue[data-gesture="rod"] {
+    justify-content: space-between;
+}
+.ritual-cue[data-gesture="rod"] .ritual-copy {
+    max-width: calc(100% - 132px);
+    width: 100%;
+}
+.ritual-cue[data-gesture="rod"] .ritual-gesture {
+    display: block;
+    width: 104px;
+    flex: 0 0 104px;
+}
+.ritual-cue[data-gesture="rod"] .hand-left {
+    left: 50%;
+    top: 12px;
+    transform: translateX(-50%);
+    font-size: 2.35rem;
+}
+.ritual-cue[data-gesture="rod"] .hand-right {
+    display: none;
+}
+.ritual-cue[data-gesture="rod"] .motion-line {
+    width: 72px;
+    top: 56px;
+    transform: translateX(-50%);
+}
+.rod-inline-meter {
+    display: none;
+    width: min(470px, 100%);
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(212, 175, 55, 0.26);
+}
+.ritual-cue[data-gesture="rod"] .rod-inline-meter {
+    display: block;
+}
+.rod-meter-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+    color: rgba(255, 246, 216, 0.9);
+    font-size: 0.82rem;
+    letter-spacing: 0.08em;
+}
+.rod-meter-track {
+    position: relative;
+    height: 12px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.12);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.rod-meter-mid {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(255, 255, 255, 0.42);
+    z-index: 3;
+}
+.rod-meter-target {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 50%;
+    width: 0;
+    border-radius: 999px;
+    background: rgba(212, 175, 55, 0.46);
+    box-shadow: 0 0 12px rgba(212, 175, 55, 0.48);
+    z-index: 1;
+}
+.rod-meter-fill {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    background: linear-gradient(90deg, rgba(126, 211, 194, 0.9), rgba(212, 175, 55, 0.92));
+    z-index: 2;
+}
+.rod-meter-fill.is-negative {
+    left: auto;
+    right: 50%;
+    background: linear-gradient(90deg, rgba(212, 175, 55, 0.92), rgba(126, 211, 194, 0.9));
+}
+.rod-meter-status {
+    margin-top: 8px;
+    color: rgba(232, 224, 208, 0.78);
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+}
 .ritual-cue[data-cue="water"] .ritual-dismiss,
 .ritual-cue[data-cue="fishing"] .ritual-dismiss {
     top: 16px;

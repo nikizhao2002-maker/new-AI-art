@@ -80,7 +80,7 @@ export class FishingRod {
     await this.send('STOP');
   }
 
-  // ─── 内部：持续读取 Arduino 上报的 FSR 值 ───────────────────
+  // ─── 内部：持续读取 Arduino 上报的编码器 / 按钮值 ───────────────────
   async _readLoop() {
     if (!this.port?.readable) return;
     const decoder = new TextDecoderStream();
@@ -95,12 +95,31 @@ export class FishingRod {
         this._buf = lines.pop(); // 保留不完整的行
         for (const line of lines) {
           const trimmed = line.trim();
-          if (trimmed.startsWith('FSR:')) {
-            const val = parseInt(trimmed.slice(4), 10);
+          if (!trimmed) continue;
+          
+          // 处理编码器值：ENCODER:num（-100..100，保留旋钮方向）
+          const encoderText = trimmed.startsWith('ENCODER:') ? trimmed.slice(8).trim() : trimmed;
+          if (/^-?\d+$/.test(encoderText)) {
+            const val = parseInt(encoderText, 10);
             if (!isNaN(val)) {
-              // 派发 fsr-update 事件，外部通过 window.addEventListener('fsr-update', e => ...) 监听
-              // e.detail: 0-50 无张力 / 50-200 轻触 / 200-600 遛鱼中 / 600+ 快断线
-              window.dispatchEvent(new CustomEvent('fsr-update', { detail: val }));
+              const raw = Math.max(-100, Math.min(100, val));
+              window.dispatchEvent(new CustomEvent('encoder-update', { 
+                detail: {
+                  raw,
+                  value: raw,
+                  abs: Math.abs(raw),
+                  direction: raw === 0 ? 0 : (raw > 0 ? 1 : -1),
+                }
+              }));
+            }
+          }
+          // 处理按钮按下事件：BTN:PRESS
+          else if (trimmed.startsWith('BTN:')) {
+            const btnType = trimmed.slice(4).trim();
+            if (btnType === 'PRESS') {
+              window.dispatchEvent(new CustomEvent('button-press', { 
+                detail: { type: 'hook', timestamp: Date.now() }
+              }));
             }
           }
         }
@@ -126,29 +145,34 @@ export const rod = new FishingRod();
   // 1. 在页面某个按钮点击事件内连接（必须有用户手势）
   document.getElementById('connect-btn').onclick = async () => {
     const ok = await rod.connect();
-    if (ok) console.log('鱼竿已连接');
+    if (ok) console.log('钓竿已连接');
   };
 
-  // 2. 进入 FISHING 状态时，根据鱼种触发震动
-  rod.vibrateFish('carp');   // 锦鲤：强冲击逐渐衰减
+  // 2. 监听编码器旋转（钓线收/放）
+  window.addEventListener('encoder-update', (e) => {
+    const tension = e.detail; // 0-100（张力百分比）
+    updateTensionMeter(tension);
+    updateFishingLine(tension);
+  });
 
-  // 3. 钓到鱼时
-  rod.vibrateCatch();
+  // 3. 监听钓竿按钮（尝试钓起）
+  window.addEventListener('button-press', (e) => {
+    if (e.detail.type === 'hook') {
+      tryHookFish();
+    }
+  });
 
   // 4. 离开 FISHING 状态时
-  rod.stop();
-
-  // 5. 监听张力数据（用于调整UI张力计、鱼线动画）
-  window.addEventListener('fsr-update', (e) => {
-    const tension = e.detail; // 0-1023
-    if (tension > 600) showLineBreakWarning();
-    updateTensionMeter(tension / 1023);
-  });
+  rod.disconnect();
 
 ──────────────────────────────────────────────────────────────
 启用 WebSerial（如报错）：
   地址栏输入: chrome://flags/#enable-experimental-web-platform-features
   → 开启 → 重启 Chrome
   Chrome 89+ 已默认支持，无需额外设置。
+
+Arduino 编码器协议：
+  发送 ENCODER:num\n  (num = -100..100，保留旋钮方向)
+  发送 BTN:PRESS\n    (钓竿按钮按下事件)
 ──────────────────────────────────────────────────────────────
 */

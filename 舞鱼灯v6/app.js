@@ -20,6 +20,7 @@ import { BubbleSystem, SplashSystem, CausticsEffect } from './water-effects.js';
 import { startHandInput, pauseHandInput, resumeHandInput, handData as sharedHandData } from './src/hand-input.js';
 import { ParticleScene } from './src/particle-scene.js';
 import { CRAFT_INDEX_TO_PARTICLE, HIGH_DETAIL_LANTERN_MODELS } from './src/fish-manifest.js';
+import { rod } from './serial.js';  // Arduino 钓竿编码器通信
 
 // ═══════════════════════════════════════════════════════
 // 配置
@@ -576,6 +577,24 @@ let openPalmHoldTime = 0; // 张手保持时间（需>0.5s才触发散开）
 // 每个手势有独立的积累计数器 + 冷却，防止误触
 const RITUAL_COOLDOWN = 90; // 手势触发后冷却帧数（约1.5s@60fps）
 let ritualCooldown = 0;     // 全局冷却（触发任意手势后锁定）
+
+// ── Arduino 钓竿编码器交互 ───────────────────────────────
+let fishingRodConnected = false;    // Arduino连接状态
+let rodTension = 0;                 // 0-100 当前钓线张力百分比（编码器值）
+let rodFishingState = 'idle';       // idle | biting | fighting | hooked
+let rodFishingStartTime = 0;        // 钓鱼开始时间戳
+let rodFishingSuccessWindow = [30, 70];// 张力需要在30-70%范围内保持3秒才能成功钓起
+let rodLineLength = 100;            // 钓线长度（视觉反馈，0-100）
+let rodTugStrength = 0;             // 鱼的挣扎强度（影响鱼的抖动幅度）
+let rodTugTimer = 0;                // 鱼挣扎的时间计数
+let rodHoldStart = 0;               // 张力保持在成功区间的开始时间
+let rodLastTension = 0;             // 上一次编码器张力值，用于判断旋钮是否被转动
+let rodRawValue = 0;                // 编码器原始有符号值，范围 -100..100
+let rodTargetDirection = 0;         // 本轮钓鱼方向：0 未锁定，1 顺时针，-1 逆时针
+let rodTargetValue = 0;             // 本轮随机目标值，带正负号
+let rodTargetTolerance = 6;         // 目标值容差，避免旋钮太难停准
+let rodZeroAdvanceReadyAt = 0;      // 卡片阶段允许“旋钮归零进入下一步”的时间
+let rodZeroAdvanceDone = false;     // 防止归零触发重复进入下一步
 
 // 手势1：双手向两侧推开 → 活鱼→骨架（stage 0→1）
 // 检测：同时检测到两只手，且两手腕X距离持续扩大
@@ -3703,10 +3722,35 @@ function enterPhase(phase) {
             fishingStruggleCount = 0;
             setFishingBodyFx(null);
             fishingStruggleCount = 0;
-            if (hintEl) hintEl.textContent = '第一次捏合，放下鱼线';
-            showToast('第一次捏合，放下鱼线', 2200);
+            
+            // ── Arduino 钓竿交互初始化 ──────────────────────────────
+            showFishingRodPanel();
+            rodTension = 0;
+            rodFishingState = 'idle';  // 使用字符串状态
+            rodFishingStartTime = 0;
+            rodFishingSuccessWindow = [30, 70];  // 成功范围：30-70%
+            rodLineLength = 100;
+            rodTugStrength = 0;
+            rodHoldStart = 0;
+            rodLastTension = 0;
+            rodRawValue = 0;
+            rodTargetDirection = 0;
+            rodTargetValue = 0;
+            rodZeroAdvanceReadyAt = 0;
+            rodZeroAdvanceDone = false;
+            updateTensionUI(0);  // 重置UI
+            
+            if (!fishingRodConnected) {
+                showToast('💡 点击右上角「连接钓竿」开始钓鱼交互');
+                updateTensionUI(0);
+            } else {
+                showToast('🎣 旋转编码器调整钓线，按钮尝试钓起鱼儿');
+            }
+            
+            if (hintEl) hintEl.textContent = '旋转编码器调节钓线，按钮尝试钓起';
             updateRitualCue('fishing');
             updateFishingCueStep(0);
+            syncFishingInputUI();
             controls.autoRotate = false;
             controls.target.set(0, 0, 0);
             // 正面侧视：相机在正前方看鱼的侧面
@@ -4023,8 +4067,24 @@ function showFishKnowledgeCard(fishIndex) {
 
     const titleEl = document.getElementById('fkc-title');
     const meaningEl = document.getElementById('fkc-meaning');
+    const transitionEl = card.querySelector('.fkc-transition');
+    const transitionEnEl = card.querySelector('.fkc-transition-en');
+    const enterBtn = document.getElementById('fkc-enter-craft');
+    const enterBtnText = enterBtn?.querySelector('span');
+    const enterBtnSub = enterBtn?.querySelector('small');
     if (titleEl) titleEl.textContent = `你钓起了「${info.shadowName}」`;
     if (meaningEl) meaningEl.textContent = info.meaning;
+    if (fishingRodConnected) {
+        if (transitionEl) transitionEl.textContent = '鱼影已上岸，按下鱼竿按钮，进入制灯工艺。';
+        if (transitionEnEl) transitionEnEl.textContent = 'PRESS THE FISHING ROD BUTTON TO BEGIN CRAFTING.';
+        if (enterBtnText) enterBtnText.textContent = '开始制灯';
+        if (enterBtnSub) enterBtnSub.textContent = 'START CRAFTING';
+    } else {
+        if (transitionEl) transitionEl.textContent = '鱼影已上岸，读完卡片后比出 OK，进入制灯工艺。';
+        if (transitionEnEl) transitionEnEl.textContent = 'WHEN READY, MAKE AN OK GESTURE TO BEGIN CRAFTING.';
+        if (enterBtnText) enterBtnText.textContent = '开始制灯';
+        if (enterBtnSub) enterBtnSub.textContent = 'START CRAFTING';
+    }
 
     updateKnowledgeFishPreview(fishIndex);
     card.classList.remove('is-hidden');
@@ -4191,6 +4251,49 @@ function setFishingBodyFx(mode) {
     if (mode === 'struggle') document.body.classList.add('fishing-struggle');
 }
 
+function isRodControlActive() {
+    return fishingRodConnected && currentPhase === PHASES.FISHING;
+}
+
+function syncFishingInputUI() {
+    const rodActive = isRodControlActive();
+    const gestureRing = document.getElementById('gesture-ring');
+    const gestureProgress = document.getElementById('gesture-progress');
+    const handSkeleton = document.getElementById('hand-skeleton');
+    const particleGuide = document.getElementById('particle-guide');
+
+    if (gestureRing) gestureRing.style.display = rodActive ? 'none' : '';
+    if (gestureProgress && currentPhase === PHASES.FISHING) gestureProgress.style.display = rodActive ? 'none' : '';
+    if (handSkeleton) handSkeleton.style.display = rodActive ? 'none' : '';
+    if (particleGuide && currentPhase === PHASES.FISHING) particleGuide.style.display = rodActive ? 'none' : '';
+
+    if (!rodActive) return;
+
+    const root = document.getElementById('ritual-cue');
+    const kicker = document.getElementById('ritual-kicker');
+    const title = document.getElementById('ritual-title');
+    const subtitle = document.getElementById('ritual-subtitle');
+    const leftHand = document.querySelector('#ritual-gesture .hand-left');
+    const rightHand = document.querySelector('#ritual-gesture .hand-right');
+    if (root) {
+        root.dataset.cue = 'fishing-rod';
+        root.dataset.gesture = 'rod';
+        root.classList.remove('is-hidden');
+    }
+    if (kicker) kicker.textContent = '钓鱼';
+    const directionText = rodTargetDirection > 0 ? '顺时针' : (rodTargetDirection < 0 ? '逆时针' : '任意方向');
+    const signedWindow = getRodTargetWindowText();
+    if (title) title.textContent = fishingLineDropped ? `${directionText}旋转，稳住鱼线` : '旋转旋钮，放下鱼钩';
+    if (subtitle) subtitle.textContent = rodTargetDirection === 0
+        ? '先向任意方向转动旋钮，系统会沿着你的方向生成本轮随机目标。'
+        : (fishingLineDropped
+            ? `把数值保持在 ${signedWindow}，鱼影会被钓上岸。`
+            : `本轮已锁定${directionText}，目标是 ${signedWindow}。`);
+    if (leftHand) leftHand.textContent = '🎣';
+    if (rightHand) rightHand.textContent = '';
+    updateRodInlineMeter(rodRawValue);
+}
+
 // ═══════════════════════════════════════════════════════
 // MediaPipe 手势
 // ═══════════════════════════════════════════════════════
@@ -4205,12 +4308,17 @@ function handleFirstFishingPinch() {
     const hintEl = document.getElementById('hint-text');
     if (hintEl) hintEl.textContent = '再次捏合，提起鱼线';
     updateFishingCueStep(1);
+    syncFishingInputUI();
     showToast('再次捏合，提起鱼线 · PINCH AGAIN TO LIFT THE LINE', 2200);
 }
 
 function updateFishingCueStep(step) {
     const root = document.getElementById('ritual-cue');
     if (!root || currentPhase !== PHASES.FISHING) return;
+    if (isRodControlActive()) {
+        syncFishingInputUI();
+        return;
+    }
     root.dataset.fishingStep = String(step);
     const title = document.getElementById('ritual-title');
     const subtitle = document.getElementById('ritual-subtitle');
@@ -4258,6 +4366,7 @@ function handleSecondFishingPinch() {
 }
 
 function handleFishingPinchFrame(isPinching) {
+    if (isRodControlActive()) return;
     if (currentPhase !== PHASES.FISHING || fishingState >= FISH_STATE.CAUGHT) return;
     if (!isPinching) {
         if (fishingPinchStableFrames > 0) setGestureProgress(0);
@@ -4743,8 +4852,10 @@ function handlePhoneData(data) {
                 handData.isPinching = true;
                 handData.pinchCooldown = 60;
                 if (currentPhase === PHASES.FISHING) {
-                    if (fishingPinchCount === 0) handleFirstFishingPinch();
-                    else if (fishingPinchCount === 1) handleSecondFishingPinch();
+                    if (!isRodControlActive()) {
+                        if (fishingPinchCount === 0) handleFirstFishingPinch();
+                        else if (fishingPinchCount === 1) handleSecondFishingPinch();
+                    }
                 } else if (currentPhase === PHASES.LANTERN_SWARM) {
                     releaseUserLantern();
                 }
@@ -4904,6 +5015,10 @@ function setupUI() {
         else if (lanternSummonStage === 'model') enterLanternDance();
         else handleSummonLantern();
     });
+
+    // ── Arduino 钓竿控制 ──────────────────────────────────────
+    setupFishingRodUI();
+    showFishingRodPanel();
 
     // 水面阶段：单击触发涟漪（无需摄像头）
     let clickStart = null;
@@ -5274,6 +5389,365 @@ function updateFishingLine(time) {
         bead.material.opacity = 0.62 + Math.sin(time * 2.6) * 0.18;
         bead.visible = fishingState < FISH_STATE.BITING;
     }
+}
+
+// ═══════════════════════════════════════════════════════
+// Arduino 钓鱼交互系统
+// ═══════════════════════════════════════════════════════
+
+function randomRodTargetMagnitude() {
+    return Math.floor(30 + Math.random() * 46); // 30..75
+}
+
+function lockRodTargetFromValue(value) {
+    const direction = Math.sign(value);
+    if (!direction || rodTargetDirection !== 0) return false;
+    rodTargetDirection = direction;
+    rodTargetValue = randomRodTargetMagnitude() * direction;
+    return true;
+}
+
+function getRodTargetBounds() {
+    if (rodTargetDirection === 0 || rodTargetValue === 0) return null;
+    const low = Math.max(1, Math.abs(rodTargetValue) - rodTargetTolerance);
+    const high = Math.min(100, Math.abs(rodTargetValue) + rodTargetTolerance);
+    return rodTargetDirection > 0 ? [low, high] : [-high, -low];
+}
+
+function getRodTargetWindowText() {
+    const bounds = getRodTargetBounds();
+    if (!bounds) return '等待方向';
+    const [a, b] = bounds;
+    const fmt = (v) => `${v > 0 ? '+' : ''}${Math.round(v)}`;
+    return `${fmt(a)} 到 ${fmt(b)}`;
+}
+
+function signedNumberText(value) {
+    return `${value > 0 ? '+' : ''}${Math.round(value)}`;
+}
+
+function updateRodInlineMeter(value) {
+    const meter = document.getElementById('rod-inline-meter');
+    const current = document.getElementById('rod-inline-current');
+    const target = document.getElementById('rod-inline-target');
+    const fill = document.getElementById('rod-inline-fill');
+    const targetZone = document.getElementById('rod-inline-target-zone');
+    const status = document.getElementById('rod-inline-status');
+    if (!meter) return;
+
+    const signedValue = Math.max(-100, Math.min(100, Number(value) || 0));
+    if (current) current.textContent = `当前 ${signedNumberText(signedValue)}`;
+    if (target) target.textContent = `目标 ${getRodTargetWindowText()}`;
+
+    if (fill) {
+        fill.classList.toggle('is-negative', signedValue < 0);
+        fill.style.width = `${Math.min(50, Math.abs(signedValue) * 0.5)}%`;
+    }
+
+    if (targetZone) {
+        const bounds = getRodTargetBounds();
+        if (!bounds) {
+            targetZone.style.left = '50%';
+            targetZone.style.right = 'auto';
+            targetZone.style.width = '0';
+        } else {
+            const [a, b] = bounds;
+            const low = Math.min(a, b);
+            const high = Math.max(a, b);
+            targetZone.style.left = `${50 + low * 0.5}%`;
+            targetZone.style.right = 'auto';
+            targetZone.style.width = `${Math.max(2, (high - low) * 0.5)}%`;
+        }
+    }
+
+    if (status) {
+        if (rodTargetDirection === 0) status.textContent = '任意方向旋转，放下鱼钩';
+        else if (isRodValueInSuccessWindow(signedValue)) status.textContent = '数值正好，稳住';
+        else status.textContent = `继续调整到 ${getRodTargetWindowText()}`;
+    }
+}
+
+function isRodValueInSuccessWindow(value) {
+    const bounds = getRodTargetBounds();
+    if (!bounds) return false;
+    const [a, b] = bounds;
+    return value >= Math.min(a, b) && value <= Math.max(a, b);
+}
+
+function handleRodTensionInput(value) {
+    if (!isRodControlActive() || fishingState >= FISH_STATE.CAUGHT) return;
+
+    const movedEnough = Math.abs(value - rodLastTension) >= 2 || Math.abs(value) >= 6;
+    if (rodTargetDirection === 0 && movedEnough && Math.sign(value) !== 0) {
+        lockRodTargetFromValue(value);
+        syncFishingInputUI();
+        showToast(`本轮目标：${getRodTargetWindowText()}`, 1800);
+    }
+
+    const targetSide = Math.sign(value) === rodTargetDirection;
+    const movedTowardTarget = targetSide && Math.abs(value - rodLastTension) >= 2;
+    rodLastTension = value;
+
+    if (!fishingLineDropped) {
+        if (movedTowardTarget || (targetSide && Math.abs(value) >= 6)) {
+            handleFirstFishingPinch();
+            rodFishingState = 'biting';
+            rodFishingStartTime = Date.now();
+            rodHoldStart = 0;
+            playRitualSfx(2);
+            updateTensionUI(value);
+        }
+        return;
+    }
+
+    if (fishingPinchCount !== 1) return;
+
+    const inRange = isRodValueInSuccessWindow(value);
+    if (inRange) {
+        if (rodFishingState !== 'fighting') {
+            rodFishingState = 'fighting';
+            showToast('数值正好，稳住旋钮...');
+        }
+        if (!rodHoldStart) rodHoldStart = Date.now();
+        if (Date.now() - rodHoldStart > 300) {
+            finishRodFishing();
+        }
+    } else {
+        rodHoldStart = 0;
+        rodFishingState = 'biting';
+    }
+
+    rodTugStrength = Math.min(1.0, Math.abs(value) / 100);
+    syncFishingInputUI();
+}
+
+function handleRodCatchShowcaseInput(value) {
+    if (!fishingRodConnected || !catchShowcaseActive || rodZeroAdvanceDone) return;
+    if (Date.now() < rodZeroAdvanceReadyAt) return;
+    if (Math.abs(value) <= 3) {
+        rodZeroAdvanceDone = true;
+        beginCraftFromCatch();
+    }
+}
+
+/**
+ * 初始化钓竿UI和事件监听
+ */
+function setupFishingRodUI() {
+    const connectBtn = document.getElementById('connect-fishing-rod');
+    const panel = document.getElementById('fishing-rod-panel');
+    
+    if (!connectBtn) return;
+    
+    // 连接按钮事件
+    connectBtn.addEventListener('click', async () => {
+        if (fishingRodConnected) return;
+        const ok = await rod.connect();
+        if (ok) {
+            fishingRodConnected = true;
+            connectBtn.textContent = '✓ 已连接';
+            connectBtn.disabled = true;
+            showToast('钓竿已连接：按提示方向旋转，钓上鱼后按按钮进入工艺体验。');
+            hideFishingRodPanel();
+            syncFishingInputUI();
+            updateTensionUI(rodRawValue);
+        } else {
+            showToast('❌ 连接失败，请检查Arduino设备');
+        }
+    });
+    
+    // 监听编码器值变化（0-100张力百分比）
+    window.addEventListener('encoder-update', (e) => {
+        const payload = typeof e.detail === 'number'
+            ? { raw: e.detail, abs: Math.abs(e.detail) }
+            : e.detail;
+        rodRawValue = Math.max(-100, Math.min(100, Number(payload?.raw ?? payload?.value ?? 0)));
+        rodTension = Math.min(100, Math.abs(Number(payload?.abs ?? rodRawValue)));
+        updateTensionUI(rodTension);
+        
+        // 更新钓线长度（逆向映射：高张力=短钓线）
+        rodLineLength = 100 - rodTension;
+        
+        // 鱼的挣扎程度随张力增加
+        if (rodFishingState === 'fighting') {
+            rodTugStrength = Math.min(1.0, rodTension / 100);
+        }
+        
+        // 张力过高警告（>80%）
+        if (rodTension > 80) {
+            showTensionWarning();
+        }
+        
+        if (currentPhase === PHASES.FISHING) {
+            if (catchShowcaseActive) handleRodCatchShowcaseInput(rodRawValue);
+            else if (isRodControlActive()) handleRodTensionInput(rodRawValue);
+            else updateRodFishingState();
+        }
+    });
+    
+    // 监听钓竿按钮按下（尝试钓起）
+    window.addEventListener('button-press', (e) => {
+        if (e.detail.type === 'hook' && currentPhase === PHASES.FISHING && !catchShowcaseActive) {
+            tryHookFish();
+        }
+    });
+}
+
+/**
+ * 显示钓竿控制面板
+ */
+function showFishingRodPanel() {
+    const panel = document.getElementById('fishing-rod-panel');
+    if (panel) panel.style.display = fishingRodConnected ? 'none' : 'block';
+}
+
+/**
+ * 隐藏钓竿控制面板
+ */
+function hideFishingRodPanel() {
+    const panel = document.getElementById('fishing-rod-panel');
+    if (panel) panel.style.display = 'none';
+}
+
+/**
+ * 更新张力UI进度条
+ */
+function updateTensionUI(value) {
+    const bar = document.getElementById('tension-bar');
+    const text = document.getElementById('tension-text');
+    const status = document.getElementById('fishing-status');
+
+    const absValue = Math.min(100, Math.abs(value));
+    const signedValue = isRodControlActive() ? rodRawValue : value;
+    if (bar) bar.style.width = absValue + '%';
+    if (text) text.textContent = isRodControlActive()
+        ? `${signedValue > 0 ? '+' : ''}${Math.round(signedValue)}`
+        : `${Math.round(absValue)}%`;
+    updateRodInlineMeter(signedValue);
+    
+    // 状态文字
+    if (status) {
+        if (!fishingRodConnected) {
+            status.textContent = '未连接';
+        } else if (rodFishingState === 'idle') {
+            status.textContent = rodTargetDirection === 0
+                ? '等待旋钮 · 任意方向'
+                : `等待旋钮 · 目标 ${getRodTargetWindowText()}`;
+        } else if (rodFishingState === 'biting') {
+            status.textContent = `鱼咬钩了 · 目标 ${getRodTargetWindowText()}`;
+        } else if (rodFishingState === 'fighting') {
+            const inRange = isRodValueInSuccessWindow(rodRawValue);
+            status.textContent = inRange ? '数值正好 · 稳住' : `目标 ${getRodTargetWindowText()}`;
+        }
+    }
+}
+
+/**
+ * 显示张力警告
+ */
+function showTensionWarning() {
+    const warning = document.getElementById('tension-warning');
+    if (warning) {
+        warning.style.display = 'block';
+        setTimeout(() => { warning.style.display = 'none'; }, 800);
+    }
+}
+
+/**
+ * 更新钓鱼状态机
+ */
+function updateRodFishingState() {
+    if (rodFishingState === 'idle' && rodTension > 10) {
+        // 鱼开始咬钩
+        rodFishingState = 'biting';
+        rodFishingStartTime = Date.now();
+        showToast('🐟 鱼咬钩了！');
+        // 音效反馈（使用现有的playRitualSfx）
+        playRitualSfx(2);  // Wipe阶段的音效
+        
+        // 触发鱼的挣扎动画
+        if (targetFishInstance && targetFishInstance.swimCtrl) {
+            rodTugStrength = 0.3;
+            rodTugTimer = 0;
+        }
+    }
+    
+    if (rodFishingState === 'biting') {
+        // 高张力时转为"对抗"状态（遛鱼）
+        if (rodTension > 50) {
+            rodFishingState = 'fighting';
+            showToast('⚡ 鱼开始挣扎！需要保持张力在30-70%范围内...');
+        }
+        // 10秒无反应则鱼离开
+        else if (Date.now() - rodFishingStartTime > 10000) {
+            rodFishingState = 'idle';
+            rodTugStrength = 0;
+            showToast('😅 鱼跑掉了，再来一次！');
+        }
+    }
+    
+    let holdStart = rodFishingState.holdStart || 0;
+    if (rodFishingState === 'fighting') {
+        // 检查张力是否在成功范围内
+        if (rodTension >= rodFishingSuccessWindow[0] && rodTension <= rodFishingSuccessWindow[1]) {
+            // 保持在正确范围内3秒则成功
+            if (!holdStart) {
+                holdStart = Date.now();
+            } else if (Date.now() - holdStart > 3000) {
+                // 成功钓起！
+                finishRodFishing();
+                return;
+            }
+        } else {
+            holdStart = 0;
+        }
+        
+        // 30秒超时则失败
+        if (Date.now() - rodFishingStartTime > 30000) {
+            rodFishingState = 'idle';
+            rodTugStrength = 0;
+            showToast('⏱️ 时间已到，鱼跑掉了！');
+        }
+    }
+}
+
+/**
+ * 尝试钓起（按钮按下时调用）
+ */
+function tryHookFish() {
+    if (rodFishingState !== 'fighting') {
+        showToast('💡 等待鱼咬钩，然后调整张力...');
+        return;
+    }
+    
+    // 检查张力是否在正确范围
+    const ok = isRodControlActive()
+        ? isRodValueInSuccessWindow(rodRawValue)
+        : rodTension >= rodFishingSuccessWindow[0] && rodTension <= rodFishingSuccessWindow[1];
+    if (ok) {
+        finishRodFishing();
+    } else {
+        showToast(`数值不对，目标范围：${getRodTargetWindowText()}`);
+    }
+}
+
+/**
+ * 完成钓鱼，进入下一阶段
+ */
+function finishRodFishing() {
+    if (fishingState >= FISH_STATE.CAUGHT || catchShowcaseActive) return;
+    showToast('钓上鱼了！');
+    playRitualSfx(4);  // Lift阶段的音效
+
+    handleSecondFishingPinch();
+    rodFishingState = 'idle';
+    rodHoldStart = 0;
+    rodTugStrength = 0;
+    rodZeroAdvanceReadyAt = Date.now() + 800;
+    rodZeroAdvanceDone = false;
+    updateTensionUI(rodRawValue);
+    syncFishingInputUI();
+    showToast('阅读鱼种卡片后，将旋钮归零进入工艺体验', 2600);
 }
 
 // ═══════════════════════════════════════════════════════
